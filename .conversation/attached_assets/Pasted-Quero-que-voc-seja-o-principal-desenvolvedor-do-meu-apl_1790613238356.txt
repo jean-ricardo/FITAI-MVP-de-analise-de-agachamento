@@ -1,0 +1,944 @@
+Quero que você seja o principal desenvolvedor do meu aplicativo chamado FITAI.
+
+Quero construir um aplicativo de treinamento físico e esportivo com inteligência artificial, inicialmente focado em análise da execução dos exercícios pela câmera do celular.
+
+IMPORTANTE:
+
+* Eu não sou programador.
+* Quero que você escreva o código necessário para construir o aplicativo.
+* Não quero apenas uma demonstração visual ou telas falsas.
+* Quero funcionalidades reais sempre que tecnicamente possível.
+* Quando alguma funcionalidade ainda não puder ser implementada, crie a arquitetura necessária para que ela possa ser adicionada posteriormente.
+* Explique de forma simples o que está fazendo.
+* Não invente funcionalidades que não estejam realmente implementadas.
+* Priorize soluções gratuitas ou de baixo custo.
+* O aplicativo deve funcionar inicialmente como aplicativo web responsivo para celular, mas a arquitetura deve permitir posteriormente transformar o projeto em aplicativo mobile nativo.
+
+==================================================
+
+1. CONCEITO DO FITAI
+    ==================================================
+
+O FITAI será um aplicativo de treinamento personalizado com inteligência artificial.
+
+A ideia principal é:
+
+ANAMNESE
+↓
+PERFIL DO USUÁRIO
+↓
+OBJETIVO
+↓
+PRESCRIÇÃO DE TREINO
+↓
+EXECUÇÃO DO EXERCÍCIO
+↓
+CÂMERA DO CELULAR
+↓
+DETECÇÃO DO CORPO
+↓
+ANÁLISE DO MOVIMENTO
+↓
+CONTAGEM DAS REPETIÇÕES
+↓
+AVALIAÇÃO DE CADA REPETIÇÃO
+↓
+NOTA DO EXERCÍCIO
+↓
+FEEDBACK
+↓
+HISTÓRICO DE EVOLUÇÃO
+
+O diferencial do aplicativo será utilizar visão computacional para analisar a execução dos exercícios através da câmera do celular.
+
+==================================================
+2. PRIMEIRO OBJETIVO DO MVP
+
+NÃO tente construir todas as funcionalidades imediatamente.
+
+A primeira versão funcional deve ser um protótipo de análise de AGACHAMENTO.
+
+O fluxo inicial será:
+
+Usuário abre o FITAI
+↓
+Seleciona “Analisar agachamento”
+↓
+Concede acesso à câmera
+↓
+Recebe instruções para posicionar o celular
+↓
+Câmera identifica o corpo
+↓
+MediaPipe Pose Landmarker identifica os landmarks
+↓
+Aplicativo acompanha o movimento
+↓
+Detecta descida
+↓
+Detecta posição inferior
+↓
+Detecta subida
+↓
+Detecta retorno à posição inicial
+↓
+Conta 1 repetição
+↓
+Analisa a repetição
+↓
+Apresenta índice experimental de execução
+↓
+Ao terminar, apresenta relatório
+
+==================================================
+3. TECNOLOGIA DE VISÃO COMPUTACIONAL
+
+Utilize preferencialmente:
+
+MediaPipe Pose Landmarker
+
+Utilize os landmarks corporais necessários para análise.
+
+Inicialmente precisamos principalmente de:
+
+* ombro
+* quadril
+* joelho
+* tornozelo
+
+Utilize os dois lados do corpo sempre que possível.
+
+Não utilize uma API paga de inteligência artificial para fazer a detecção corporal se isso puder ser realizado localmente no navegador/dispositivo.
+
+A análise da pose deve funcionar em tempo real.
+
+Quando os landmarks necessários não estiverem suficientemente confiáveis:
+
+Mostrar:
+
+“Não foi possível identificar corretamente seu corpo.”
+
+Não gerar uma nota falsa.
+
+==================================================
+4. TELA INICIAL
+
+Criar uma tela inicial moderna.
+
+Nome:
+
+FITAI
+
+Subtítulo:
+
+“Treine melhor. Execute melhor. Evolua.”
+
+Botões:
+
+[ COMEÇAR ]
+
+[ MEU TREINO ]
+
+[ MEU PROGRESSO ]
+
+[ EXERCÍCIOS ]
+
+Design:
+
+* moderno
+* esportivo
+* minimalista
+* profissional
+* mobile-first
+* fácil de utilizar
+* aparência de aplicativo fitness premium
+
+Não utilizar excesso de elementos.
+
+==================================================
+5. CADASTRO DO USUÁRIO
+
+Criar estrutura para cadastro.
+
+Campos:
+
+Nome
+Data de nascimento
+Sexo
+Altura
+Peso
+Objetivo principal
+
+Objetivos:
+
+* emagrecimento
+* hipertrofia
+* força
+* condicionamento
+* desempenho esportivo
+* mobilidade
+* saúde geral
+* outro
+
+Criar banco de dados para armazenar essas informações.
+
+==================================================
+6. ANAMNESE
+
+Criar uma anamnese estruturada.
+
+Perguntas:
+
+1. Qual seu principal objetivo?
+2. Qual modalidade você pratica?
+
+Opções:
+
+* musculação
+* corrida
+* futebol
+* futevôlei
+* vôlei
+* basquete
+* ciclismo
+* funcional
+* outra
+
+3. Qual seu nível?
+
+* iniciante
+* intermediário
+* avançado
+
+4. Quantos dias por semana pretende treinar?
+5. Quanto tempo possui por treino?
+6. Quais equipamentos possui?
+7. Já possui experiência com treinamento?
+8. Existe algum exercício que você não consegue realizar?
+9. Quais são suas principais dificuldades?
+10. Existe alguma limitação física informada pelo próprio usuário?
+
+IMPORTANTE:
+
+Não apresentar diagnóstico médico.
+
+O aplicativo deve deixar claro que a anamnese não substitui avaliação profissional.
+
+==================================================
+7. PERFIL
+
+Criar página:
+
+“Meu Perfil”
+
+Mostrar:
+
+Nome
+Idade
+Altura
+Peso
+Objetivo
+Modalidades
+Nível
+Frequência de treino
+
+Adicionar botão:
+
+[ EDITAR PERFIL ]
+
+==================================================
+8. BIBLIOTECA DE EXERCÍCIOS
+
+Criar uma estrutura para biblioteca de exercícios.
+
+Cada exercício deve possuir:
+
+Nome
+Categoria
+Descrição
+Objetivo
+Instruções
+Erros comuns
+Vídeo demonstrativo
+Imagem opcional
+Nível
+Equipamentos necessários
+Músculos/qualidades trabalhadas
+
+Inicialmente cadastrar:
+
+Agachamento
+Flexão de braço
+Avanço
+Stiff
+Elevação pélvica
+Prancha
+
+Porém, somente o AGACHAMENTO precisa possuir análise por câmera no primeiro MVP.
+
+Os outros exercícios podem ficar preparados para implementação futura.
+
+==================================================
+9. PÁGINA DO EXERCÍCIO
+
+Ao selecionar um exercício:
+
+Mostrar:
+
+NOME DO EXERCÍCIO
+
+Vídeo demonstrativo
+
+“Como executar”
+
+“Para que serve”
+
+“Principais erros”
+
+“Cuidados”
+
+Botão:
+
+[ ANALISAR COM A CÂMERA ]
+
+==================================================
+10. ANÁLISE DO AGACHAMENTO
+
+Criar uma página específica:
+
+“Análise de Agachamento”
+
+Antes de iniciar:
+
+Mostrar instruções:
+
+“Coloque o celular em uma posição onde seu corpo inteiro fique visível.”
+
+“Prefira uma visão lateral ou aproximadamente lateral.”
+
+“Utilize um ambiente bem iluminado.”
+
+“Mantenha distância suficiente para que cabeça, quadril, joelhos e pés apareçam na câmera.”
+
+Botão:
+
+[ INICIAR CÂMERA ]
+
+==================================================
+11. CÂMERA
+
+Solicitar permissão para utilizar a câmera.
+
+Priorizar câmera traseira em dispositivos móveis.
+
+Mostrar vídeo ao vivo.
+
+Sobre o vídeo, desenhar os landmarks corporais detectados.
+
+Mostrar:
+
+✓ Corpo detectado
+
+ou:
+
+⚠ Corpo não detectado
+
+Quando houver apenas parte do corpo:
+
+“Afaste-se ou reposicione o celular para que o corpo inteiro apareça.”
+
+==================================================
+12. ESTADOS DO AGACHAMENTO
+
+Criar uma máquina de estados.
+
+Estados:
+
+EM_PÉ
+DESCENDO
+EMBAIXO
+SUBINDO
+
+Fluxo válido:
+
+EM_PÉ
+↓
+DESCENDO
+↓
+EMBAIXO
+↓
+SUBINDO
+↓
+EM_PÉ
+
+Somente completar uma repetição quando o ciclo inteiro ocorrer.
+
+Não contar movimentos incompletos como repetições.
+
+Evitar contagem duplicada.
+
+Criar filtros/suavização para reduzir ruídos dos landmarks.
+
+==================================================
+13. CONTAGEM DE REPETIÇÕES
+
+Mostrar:
+
+REPETIÇÕES
+
+0
+
+Durante a execução:
+
+1
+2
+3
+4
+5
+
+etc.
+
+Mostrar também:
+
+ESTADO ATUAL
+
+Exemplo:
+
+“DESCENDO”
+
+==================================================
+14. ANÁLISE DE MOVIMENTO
+
+Para cada repetição, registrar dados.
+
+Inicialmente:
+
+* profundidade aproximada
+* amplitude
+* tempo de descida
+* tempo de subida
+* posição do quadril
+* posição do joelho
+* posição do tornozelo
+* estabilidade dos landmarks
+* alinhamento aproximado do joelho
+
+Utilizar cálculos geométricos/ângulos quando apropriado.
+
+Não afirmar que a análise é uma avaliação biomecânica clínica.
+
+==================================================
+15. ÍNDICE DE EXECUÇÃO
+
+Criar uma pontuação experimental.
+
+Exemplo:
+
+Profundidade: 90%
+Amplitude: 94%
+Controle: 88%
+Alinhamento: 91%
+
+Índice de execução:
+
+91%
+
+IMPORTANTE:
+
+Chamar isso de:
+
+“Índice experimental de execução”
+
+e NÃO:
+
+“Diagnóstico”
+
+ou:
+
+“Avaliação médica”
+
+ou:
+
+“Precisão biomecânica absoluta”
+
+O algoritmo deve ser transparente.
+
+O usuário deve conseguir visualizar quais fatores contribuíram para a pontuação.
+
+==================================================
+16. AVALIAÇÃO INDIVIDUAL
+
+Após cada repetição:
+
+Mostrar algo semelhante a:
+
+REPETIÇÃO 1
+
+Índice de execução:
+92%
+
+✓ Boa amplitude
+✓ Bom controle
+
+⚠ Atenção ao alinhamento do joelho
+
+Depois:
+
+REPETIÇÃO 2
+
+94%
+
+etc.
+
+==================================================
+17. RELATÓRIO FINAL
+
+Ao finalizar:
+
+Mostrar:
+
+TREINO FINALIZADO
+
+Repetições:
+10
+
+Índice médio:
+91%
+
+Melhor repetição:
+95%
+
+Menor repetição:
+84%
+
+Tempo total:
+00:45
+
+Depois:
+
+“Pontos positivos”
+
+“Pontos para melhorar”
+
+Exemplo:
+
+✓ Boa consistência
+✓ Boa amplitude média
+
+⚠ Redução de amplitude nas últimas repetições
+⚠ Necessário melhorar controle em algumas fases
+
+==================================================
+18. HISTÓRICO
+
+Salvar os treinos.
+
+Mostrar:
+
+Data
+Exercício
+Repetições
+Índice médio
+Tempo
+
+Exemplo:
+
+28/09
+Agachamento
+10 repetições
+91%
+
+30/09
+Agachamento
+12 repetições
+94%
+
+Criar gráfico de evolução.
+
+==================================================
+19. PROGRESSÃO
+
+Preparar sistema para futuramente mostrar:
+
+* evolução da técnica
+* volume
+* repetições
+* frequência
+* tempo
+* desempenho
+
+==================================================
+20. PRESCRIÇÃO DE TREINAMENTO
+
+Criar estrutura para futura prescrição personalizada.
+
+Um treino deve possuir:
+
+Nome
+Objetivo
+Exercícios
+Séries
+Repetições
+Tempo
+Intervalo
+Intensidade
+Observações
+
+Exemplo:
+
+TREINO DE PERNAS
+
+Agachamento
+3 × 10
+90 segundos
+
+Stiff
+3 × 10
+90 segundos
+
+Avanço
+3 × 12
+60 segundos
+
+IMPORTANTE:
+
+Inicialmente criar a estrutura.
+
+A geração automática de treino por IA deve ser implementada somente depois que o MVP da análise do movimento estiver funcionando.
+
+==================================================
+21. IA GENERATIVA
+
+Preparar a arquitetura para integração futura com um modelo de linguagem.
+
+A IA poderá posteriormente utilizar:
+
+* dados da anamnese
+* objetivo
+* histórico
+* desempenho
+* exercícios realizados
+* índice de execução
+
+para gerar sugestões personalizadas.
+
+Porém:
+
+Não faça recomendações médicas.
+
+Não diagnostique lesões.
+
+Não determine que uma pessoa está apta ou inapta para atividade física.
+
+Quando houver sinais de possível problema, recomendar avaliação de profissional habilitado.
+
+==================================================
+22. FREQUÊNCIA CARDÍACA
+
+Preparar arquitetura para integração futura com frequência cardíaca.
+
+Possíveis fontes futuras:
+
+* smartwatch
+* Apple Watch
+* sensores Bluetooth
+* cinta cardíaca Bluetooth
+
+Criar uma camada de abstração:
+
+HeartRateProvider
+
+para permitir futuramente conectar diferentes dispositivos.
+
+Não inventar dados de frequência cardíaca.
+
+Se nenhum sensor estiver conectado:
+
+Mostrar:
+
+“Frequência cardíaca não disponível.”
+
+==================================================
+23. SUPORTE PARA CELULAR
+
+O aplicativo deve incluir instruções para utilização com:
+
+* tripé
+* suporte de celular
+* apoio estável
+
+Criar uma tela:
+
+“Posicionamento da câmera”
+
+Mostrar instruções simples sobre:
+
+distância
+altura
+ângulo
+iluminação
+corpo inteiro visível
+
+==================================================
+24. BANCO DE DADOS
+
+Criar uma estrutura de banco de dados organizada.
+
+Entidades principais:
+
+users
+profiles
+anamnesis
+exercises
+workouts
+workout_exercises
+exercise_sessions
+repetitions
+performance_metrics
+feedback
+heart_rate_data
+
+Criar relações adequadas.
+
+Não armazenar dados desnecessários.
+
+==================================================
+25. PRIVACIDADE
+
+A câmera do usuário é uma informação sensível.
+
+Não enviar vídeo para servidores se a análise puder ser feita localmente.
+
+Preferir processamento local.
+
+Se no futuro houver necessidade de enviar dados para servidor:
+
+* solicitar consentimento
+* informar claramente
+* permitir exclusão
+* armazenar somente o necessário
+
+Não armazenar vídeos automaticamente.
+
+==================================================
+26. ARQUITETURA
+
+Quero uma arquitetura limpa e modular.
+
+Separar:
+
+UI
+Autenticação
+Banco de dados
+Análise corporal
+Reconhecimento de exercícios
+Pontuação
+Histórico
+Prescrição
+Frequência cardíaca
+
+Criar componentes reutilizáveis.
+
+A arquitetura deve permitir adicionar novos exercícios no futuro sem reescrever o aplicativo inteiro.
+
+==================================================
+27. NOVOS EXERCÍCIOS FUTUROS
+
+Preparar o sistema para futuramente analisar:
+
+Agachamento
+Flexão
+Avanço
+Stiff
+Elevação pélvica
+Desenvolvimento
+Remada
+Corrida
+Salto
+Afundo
+Burpee
+
+Também preparar possibilidade de exercícios específicos para:
+
+CORRIDA
+FUTEBOL
+FUTEVÔLEI
+VÔLEI
+MUSCULAÇÃO
+CONDICIONAMENTO
+
+==================================================
+28. DESIGN
+
+Quero design:
+
+moderno
+esportivo
+minimalista
+profissional
+mobile-first
+
+Usar boa hierarquia visual.
+
+Botões grandes.
+
+Textos fáceis de ler.
+
+Navegação simples.
+
+Criar navegação inferior no celular:
+
+Início
+Treinos
+Exercícios
+Progresso
+Perfil
+
+==================================================
+29. SEGURANÇA E ERROS
+
+Criar tratamento para:
+
+câmera bloqueada
+câmera indisponível
+corpo não detectado
+mais de uma pessoa detectada
+landmarks insuficientes
+internet indisponível
+erro no banco de dados
+
+Nunca gerar uma análise inventada.
+
+==================================================
+30. PRIMEIRA ENTREGA
+
+IMPORTANTE:
+
+Não tente terminar todas as funcionalidades acima antes de testar o aplicativo.
+
+Construa primeiro:
+
+1. Interface inicial
+2. Tela de análise
+3. Permissão da câmera
+4. MediaPipe Pose Landmarker
+5. Detecção do corpo
+6. Landmarks
+7. Máquina de estados
+8. Contagem de agachamentos
+9. Registro de cada repetição
+10. Índice experimental básico
+11. Relatório final
+
+Depois de implementar isso:
+
+PARE.
+
+Mostre claramente o que foi implementado.
+
+Mostre como testar.
+
+Informe qualquer funcionalidade que ainda não esteja funcionando.
+
+Não avance para recursos complexos até que o MVP seja testado.
+
+==================================================
+31. CRITÉRIO DE SUCESSO DO PRIMEIRO MVP
+
+Considerarei o primeiro MVP funcional quando eu conseguir:
+
+1. Abrir o FITAI no celular.
+2. Permitir acesso à câmera.
+3. Aparecer meu corpo na tela.
+4. Aparecerem os landmarks.
+5. Fazer agachamentos.
+6. O aplicativo identificar a descida.
+7. Identificar a subida.
+8. Contar corretamente as repetições.
+9. Mostrar os dados da execução.
+10. Gerar uma pontuação experimental.
+11. Mostrar feedback.
+12. Mostrar um relatório ao terminar.
+
+==================================================
+32. REGRA FUNDAMENTAL
+
+Não quero que você simplesmente crie uma interface bonita simulando que existe IA.
+
+Quero implementar a funcionalidade real sempre que possível.
+
+Se alguma parte ainda for apenas uma simulação, identifique claramente:
+
+“DEMO”
+
+Se alguma tecnologia necessária não estiver disponível no ambiente atual, explique exatamente o que falta.
+
+Não esconda erros.
+
+Não invente resultados.
+
+==================================================
+33. DESENVOLVIMENTO INTERATIVO
+
+Depois da primeira implementação, espere meus testes.
+
+Quando eu disser:
+
+“O contador errou”
+
+corrija o algoritmo.
+
+Quando eu disser:
+
+“A câmera não reconheceu meu corpo”
+
+investigue a detecção.
+
+Quando eu disser:
+
+“Quero adicionar flexão”
+
+adicione um novo módulo sem quebrar o agachamento.
+
+Quando eu disser:
+
+“Quero adicionar frequência cardíaca”
+
+prepare a integração apropriada.
+
+Sempre preserve as funcionalidades que já estão funcionando.
+
+==================================================
+34. OBJETIVO FINAL DO PRODUTO
+
+No futuro, o FITAI deverá se tornar uma plataforma completa de treinamento inteligente.
+
+O usuário poderá:
+
+fazer anamnese
+↓
+receber treinamento personalizado
+↓
+assistir à explicação dos exercícios
+↓
+colocar o celular em um suporte
+↓
+executar o exercício
+↓
+ser analisado pela câmera
+↓
+receber feedback em tempo real
+↓
+receber uma avaliação de cada repetição
+↓
+acompanhar sua evolução
+↓
+integrar frequência cardíaca
+↓
+receber novos treinos conforme sua evolução.
+
+O objetivo é transformar o FITAI em um “treinador virtual” baseado em dados de movimento e desempenho.
+
+COMECE AGORA PELO MVP DO AGACHAMENTO.
+
+Antes de adicionar recursos secundários, faça a câmera + MediaPipe + detecção corporal + contagem de repetições funcionarem corretamente.

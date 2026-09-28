@@ -1,6 +1,6 @@
-# [Project name]
+# FITAI
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Aplicativo web mobile-first que analisa agachamentos localmente pela câmera do dispositivo, conta ciclos completos e mostra feedback experimental de execução.
 
 ## Run & Operate
 
@@ -22,23 +22,37 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/fitai/src/pages/home.tsx` — tela inicial e posicionamento do MVP
+- `artifacts/fitai/src/pages/analyze.tsx` — câmera, MediaPipe Pose Landmarker e máquina de estados
+- `artifacts/fitai/src/pages/report.tsx` — relatório da sessão salvo localmente
+- `artifacts/fitai/src/lib/fitai-analysis.ts` — geometria, suavização, estados e métricas experimentais
+- `artifacts/fitai/src/index.css` — tema visual e responsividade
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- A análise do primeiro MVP acontece no navegador para que o vídeo não seja enviado a servidores.
+- O ciclo válido exige a sequência EM_PÉ → DESCENDO → EMBAIXO → SUBINDO → EM_PÉ.
+- O índice é experimental e combina profundidade aproximada e duração do ciclo; não representa diagnóstico ou avaliação clínica.
+- O primeiro MVP usa localStorage apenas para preservar o último relatório; persistência em banco fica para depois dos testes do contador.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Tela inicial com orientação para o MVP do agachamento.
+- Câmera traseira, landmarks desenhados no vídeo e status de enquadramento.
+- Contagem de repetições completas com filtro de ruído e estados de movimento.
+- Métricas por repetição, índice médio e relatório local.
+- Tratamento explícito para câmera bloqueada, corpo ausente, enquadramento incompleto e mais de uma pessoa.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Priorizar funcionalidades reais e processamento local; não mascarar recursos ainda não implementados como se fossem IA.
+- Parar após o MVP do agachamento para que o usuário teste câmera e contador antes de expandir o produto.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- MediaPipe carrega WASM e o modelo por URLs públicas no navegador; é necessário internet na primeira carga da análise.
+- A câmera exige permissão do navegador e contexto seguro; quando bloqueada, a sessão não gera pontuação.
+- O build manual precisa de `PORT` e `BASE_PATH`; o workflow fornece essas variáveis automaticamente.
 
 ## Pointers
 

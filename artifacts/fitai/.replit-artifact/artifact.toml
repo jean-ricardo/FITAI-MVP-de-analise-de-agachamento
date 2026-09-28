@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "FITAI"
+description = "Aplicativo web responsivo de treinamento físico que usa a câmera do dispositivo e MediaPipe Pose Landmarker para analisar agachamentos localmente, contar repetições e gerar feedback experimental transparente."
+version = "1.0.0"
+id = "artifacts/fitai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19587
+
+[services.development]
+run = "pnpm --filter @workspace/fitai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/fitai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/fitai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19587"
+BASE_PATH = "/"
