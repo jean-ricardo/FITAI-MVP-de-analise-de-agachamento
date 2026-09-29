@@ -1,0 +1,499 @@
+IMPORTANTE: NÃO recrie o FITAI do zero.
+
+O aplicativo estava conseguindo acessar a câmera e detectar o corpo com o MediaPipe Pose, mas depois das últimas alterações a detecção corporal parou de funcionar.
+
+Quero que você faça uma correção focada na câmera e no sistema de pose, preservando todas as funcionalidades que já existem.
+
+==================================================
+
+1. PRIMEIRO: DIAGNOSTICAR O PROBLEMA
+    ==================================================
+
+Antes de alterar o código, analise a implementação atual e descubra por que o MediaPipe deixou de reconhecer o corpo.
+
+Verifique especificamente:
+
+* inicialização da câmera;
+* permissões da câmera;
+* stream de vídeo;
+* elemento ;
+* resolução do vídeo;
+* orientação do vídeo;
+* canvas usado para desenhar landmarks;
+* processamento dos frames;
+* inicialização do MediaPipe Pose Landmarker;
+* callback/resultados do MediaPipe;
+* requestAnimationFrame ou mecanismo equivalente;
+* transformação/crop/zoom aplicado ao vídeo;
+* coordenadas dos landmarks;
+* sincronização entre vídeo e canvas.
+
+NÃO simplesmente substitua tudo.
+
+Descubra primeiro onde a alteração quebrou o fluxo.
+
+==================================================
+2. RESTAURAR A DETECÇÃO CORPORAL
+
+O objetivo principal é fazer novamente:
+
+Câmera
+↓
+Frame do vídeo
+↓
+MediaPipe Pose Landmarker
+↓
+Landmarks
+↓
+Esqueleto sobre o vídeo
+↓
+Análise do agachamento
+
+funcionar em tempo real.
+
+Quando o corpo for detectado:
+
+mostrar:
+
+“CORPO DETECTADO ✓”
+
+Quando não for:
+
+“CORPO NÃO DETECTADO”
+
+Não criar um falso estado de detecção.
+
+==================================================
+3. TESTE SIMPLES DO MEDIAPIPE
+
+Antes de executar a análise do agachamento, criar uma verificação visual simples.
+
+Quando o MediaPipe detectar uma pessoa:
+
+* desenhar landmarks;
+* desenhar conexões;
+* mostrar quantidade/estado da detecção;
+* atualizar os landmarks em tempo real.
+
+Primeiro garanta que o esqueleto aparece corretamente.
+
+Somente depois conecte novamente a detecção ao contador de agachamentos.
+
+==================================================
+4. NÃO ALTERAR A LÓGICA DO AGACHAMENTO SEM NECESSIDADE
+
+A máquina de estados do agachamento que já existe deve ser preservada.
+
+Não modificar:
+
+EM_PÉ
+↓
+DESCENDO
+↓
+EMBAIXO
+↓
+SUBINDO
+↓
+EM_PÉ
+
+a menos que seja absolutamente necessário.
+
+O problema atual é prioritariamente a detecção corporal/câmera.
+
+==================================================
+5. BOTÕES DE ZOOM
+
+Adicionar um controle de zoom visível na interface da câmera.
+
+Quero:
+
+[ 0,5x ] [ 1x ] [ 1,5x ] [ 2x ]
+
+O botão:
+
+0,5x
+
+é especialmente importante.
+
+Quando o usuário tocar em 0,5x, o aplicativo deve tentar utilizar a câmera ultrawide real do celular, quando o dispositivo e o navegador permitirem.
+
+IMPORTANTE:
+
+0,5x REAL não deve ser simplesmente tratado como “zoom digital”.
+
+No iPhone, quando o navegador permitir acesso às diferentes lentes, tentar selecionar a câmera ultrawide.
+
+Porém, navegadores móveis nem sempre expõem diretamente a seleção de lente.
+
+Portanto:
+
+1. Detectar se existe uma câmera ultrawide disponível.
+2. Se existir, permitir selecioná-la.
+3. Se não existir, manter a câmera atual e informar que o dispositivo/navegador não disponibiliza 0,5x real.
+4. NÃO fingir que o 0,5x é uma lente ultrawide se for apenas um crop/escala.
+
+==================================================
+6. FALLBACK PARA 0,5x
+
+Se a câmera ultrawide real não puder ser acessada pelo navegador:
+
+criar fallback visual.
+
+Nesse caso, permitir reduzir/ampliar a área visível utilizando transformação adequada.
+
+Mas deixar internamente claro:
+
+“0,5x simulado”
+
+e não:
+
+“0,5x ultrawide”
+
+quando não for uma lente real.
+
+O fallback nunca pode prejudicar o MediaPipe.
+
+==================================================
+7. MUITO IMPORTANTE — ZOOM NÃO PODE QUEBRAR O MEDIAPIPE
+
+O zoom/crop da interface não deve alterar incorretamente o frame que é enviado ao MediaPipe.
+
+Preferencialmente:
+
+* capturar o frame original da câmera;
+* processar esse frame pelo MediaPipe;
+* aplicar transformação visual separadamente na apresentação do vídeo/canvas.
+
+Assim:
+
+Câmera original
+↓
+MediaPipe
+↓
+Landmarks
+
+E separadamente:
+
+Câmera
+↓
+Zoom visual
+↓
+Tela
+
+Não aplicar uma transformação que faça os landmarks perderem correspondência com a imagem.
+
+Se o vídeo for transformado com CSS, garantir que o canvas de landmarks receba exatamente a mesma transformação.
+
+==================================================
+8. SINCRONIZAÇÃO VÍDEO + LANDMARKS
+
+Depois de implementar zoom, verificar:
+
+* posição dos landmarks;
+* escala;
+* proporção;
+* orientação;
+* espelhamento;
+* crop.
+
+O esqueleto deve continuar exatamente sobre o corpo.
+
+Não pode acontecer:
+
+corpo em uma posição
+↓
+landmarks deslocados para outra posição.
+
+==================================================
+9. RESPONSIVIDADE
+
+A câmera deve ocupar praticamente toda a tela do celular.
+
+Utilizar:
+
+width: 100%;
+height: 100%;
+
+ou equivalente adequado ao layout atual.
+
+O vídeo deve manter a proporção correta.
+
+Evitar deformação do corpo.
+
+Preferir:
+
+object-fit: cover
+
+quando adequado.
+
+==================================================
+10. BOTÃO 0,5x NO CELULAR
+
+O botão deve aparecer na parte inferior da câmera.
+
+Exemplo:
+
+┌──────────────────────────┐
+│                          │
+│        CÂMERA            │
+│                          │
+│       corpo              │
+│                          │
+│                          │
+│                          │
+│  [0,5x] [1x] [1,5x] [2x]│
+│                          │
+│     REPETIÇÕES: 05       │
+└──────────────────────────┘
+
+O botão selecionado deve ficar visualmente destacado.
+
+==================================================
+11. CONTROLE DE CÂMERA
+
+Adicionar também:
+
+[🔄 TROCAR CÂMERA]
+
+para permitir alternar entre câmera frontal e traseira quando suportado.
+
+Para análise do agachamento:
+
+priorizar a câmera traseira.
+
+==================================================
+12. ORIENTAÇÃO PARA VISÃO LATERAL
+
+Como o analisador atual é de visão lateral, mostrar:
+
+“Posicione o celular de lado em relação ao seu corpo.”
+
+“Certifique-se de que cabeça, quadril, joelhos e pés estejam visíveis.”
+
+==================================================
+13. DETECÇÃO DE CORPO
+
+Criar estados claros:
+
+CAMERA_LOADING
+
+CAMERA_READY
+
+POSE_LOADING
+
+POSE_DETECTED
+
+POSE_NOT_DETECTED
+
+POSE_LOW_CONFIDENCE
+
+ERROR
+
+Mostrar ao usuário mensagens apropriadas.
+
+Exemplo:
+
+“Inicializando câmera…”
+
+“Inicializando análise corporal…”
+
+“Corpo detectado ✓”
+
+ou:
+
+“Não conseguimos identificar seu corpo. Ajuste o posicionamento.”
+
+==================================================
+14. CONFIDENCE
+
+Não considerar uma detecção instável como válida.
+
+Criar um threshold de confiança configurável.
+
+Exemplo:
+
+POSE_CONFIDENCE_THRESHOLD
+
+Não deixar esse valor espalhado pelo código.
+
+Colocar em uma configuração central.
+
+==================================================
+15. DEBUG TEMPORÁRIO
+
+Adicionar temporariamente um painel de debug que possa ser ativado pelo desenvolvedor.
+
+Mostrar:
+
+Camera:
+READY
+
+Video:
+PLAYING
+
+MediaPipe:
+READY
+
+Pose:
+DETECTED
+
+Landmarks:
+AVAILABLE
+
+FPS:
+XX
+
+Isso ajudará a descobrir exatamente onde a câmera está falhando.
+
+==================================================
+16. PERFORMANCE
+
+Garantir que o processamento da pose não bloqueie o vídeo.
+
+Evitar processar frames desnecessariamente.
+
+Usar requestAnimationFrame ou mecanismo adequado.
+
+Evitar criar repetidamente novas instâncias do MediaPipe.
+
+Inicializar o Pose Landmarker apenas uma vez.
+
+==================================================
+17. NÃO QUEBRAR O MVP
+
+Preservar:
+
+* contador;
+* estados do agachamento;
+* análise das repetições;
+* índice experimental;
+* relatório;
+* feedback;
+* histórico.
+
+Corrigir somente o necessário para restaurar a câmera e integrar o zoom.
+
+==================================================
+18. TESTE OBRIGATÓRIO
+
+Depois das alterações, testar:
+
+TESTE 1
+Abrir câmera.
+
+Resultado esperado:
+vídeo funcionando.
+
+TESTE 2
+Entrar na frente da câmera.
+
+Resultado esperado:
+landmarks aparecem.
+
+TESTE 3
+Mover o corpo.
+
+Resultado esperado:
+landmarks acompanham o corpo.
+
+TESTE 4
+Selecionar 1x.
+
+Resultado:
+câmera normal.
+
+TESTE 5
+Selecionar 0,5x.
+
+Resultado:
+usar ultrawide real quando disponível.
+
+TESTE 6
+Se ultrawide não estiver disponível:
+
+mostrar fallback claramente sem quebrar a detecção.
+
+TESTE 7
+Selecionar 1,5x.
+
+Resultado:
+zoom funcionando.
+
+TESTE 8
+Selecionar 2x.
+
+Resultado:
+zoom funcionando.
+
+TESTE 9
+Fazer agachamento.
+
+Resultado:
+MediaPipe continua detectando o corpo.
+
+TESTE 10
+Contador.
+
+Resultado:
+repetições continuam sendo contadas.
+
+==================================================
+19. REGRA PRINCIPAL
+
+A prioridade agora é:
+
+1. CÂMERA FUNCIONANDO
+2. MEDIAPIPE DETECTANDO O CORPO
+3. LANDMARKS ALINHADOS COM O CORPO
+4. ZOOM FUNCIONANDO
+5. CONTADOR FUNCIONANDO
+6. ANÁLISE FUNCIONANDO
+
+Não priorize novas funcionalidades até esses seis pontos estarem funcionando.
+
+==================================================
+20. RESULTADO FINAL ESPERADO
+
+Quero poder abrir o FITAI no celular e ver:
+
+Câmera ocupando praticamente toda a tela.
+
+Controles:
+
+[0,5x] [1x] [1,5x] [2x]
+
+Botão:
+
+[TROCAR CÂMERA]
+
+E, quando eu entrar no campo de visão:
+
+“CORPO DETECTADO ✓”
+
+com o esqueleto do MediaPipe acompanhando meu corpo em tempo real.
+
+Depois:
+
+“INICIAR ANÁLISE”
+
+e o sistema deve voltar a contar e analisar os agachamentos normalmente.
+
+IMPORTANTE:
+
+Não recrie o aplicativo.
+
+Não remova funcionalidades existentes.
+
+Não faça uma simulação de detecção.
+
+Corrija o código atual.
+
+Primeiro descubra por que a detecção parou, depois faça a correção.
+
+Ao finalizar, explique:
+
+1. Qual era o problema.
+2. O que foi corrigido.
+3. Como o 0,5x foi implementado.
+4. Se o dispositivo consegue acessar a lente ultrawide real ou se foi utilizado fallback.
+5. Como testar no celular.

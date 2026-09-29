@@ -1,0 +1,713 @@
+Quero aprimorar o analisador de agachamento do FITAI especificamente para vídeos realizados em VISÃO LATERAL (plano sagital).
+
+Não recrie o projeto do zero.
+
+Analise a implementação atual e integre os critérios abaixo ao sistema de análise já existente.
+
+O objetivo é que o aplicativo deixe de apenas contar repetições e passe a analisar tecnicamente as fases do agachamento, identificando possíveis desvios e gerando orientações específicas para a próxima execução.
+
+IMPORTANTE:
+
+Esta é uma análise experimental por visão computacional.
+
+Não apresentar os resultados como diagnóstico médico, avaliação clínica ou garantia de técnica perfeita.
+
+Não afirmar que um determinado movimento necessariamente causará lesão.
+
+Quando os landmarks não permitirem uma conclusão confiável, informar que o critério não pôde ser avaliado.
+
+==================================================
+
+1. CONFIGURAÇÃO DA ANÁLISE
+    ==================================================
+
+O modo “Agachamento — Visão Lateral” deve exigir preferencialmente uma câmera de perfil.
+
+Antes de iniciar:
+
+“Posicione a câmera aproximadamente perpendicular ao seu corpo.”
+
+“Deixe cabeça, tronco, quadril, joelho, tornozelo e pé visíveis.”
+
+“Procure manter apenas uma pessoa na área de análise.”
+
+Criar uma verificação inicial do enquadramento.
+
+Se o corpo não estiver suficientemente visível:
+
+“Não é possível realizar uma análise lateral confiável. Ajuste a câmera.”
+
+==================================================
+2. LANDMARKS NECESSÁRIOS
+
+Utilizar, quando disponíveis:
+
+* ombro
+* quadril
+* joelho
+* tornozelo
+* calcanhar
+* ponta do pé
+
+Utilizar os lados esquerdo e direito quando possível.
+
+Como a câmera é lateral, priorizar o lado corporal mais claramente visível.
+
+Quando houver boa visibilidade dos dois lados, comparar os lados para identificar possíveis assimetrias.
+
+==================================================
+3. FASES DO AGACHAMENTO
+
+Dividir cada repetição em:
+
+SETUP
+DESCIDA
+PROFUNDIDADE MÁXIMA
+SUBIDA
+FINALIZAÇÃO
+
+A análise deve registrar métricas em cada fase.
+
+Não avaliar somente o frame mais baixo.
+
+Analisar a trajetória durante todo o movimento.
+
+==================================================
+4. SETUP — POSIÇÃO INICIAL
+
+Verificar:
+
+A) Pés
+
+Verificar se o pé/calcanhar permanece em contato com o solo quando essa informação for visualmente detectável.
+
+Se o calcanhar subir:
+
+Possível erro:
+
+“Perda de contato do calcanhar.”
+
+Feedback:
+
+“Procure manter o apoio do pé estável durante o movimento. Se necessário, reduza a amplitude ou ajuste sua base.”
+
+Não afirmar que o problema é causado por uma única estrutura anatômica.
+
+B) Coluna/tronco
+
+Utilizar o segmento:
+
+ombro → quadril
+
+para estimar a inclinação do tronco.
+
+Estabelecer um baseline durante a posição inicial.
+
+C) Posição inicial
+
+Registrar:
+
+* posição do quadril;
+* posição do joelho;
+* posição do tornozelo;
+* posição do ombro;
+* orientação aproximada do tronco.
+
+==================================================
+5. DESCIDA — FLEXÃO DE QUADRIL E JOELHOS
+
+Durante a fase excêntrica, analisar:
+
+* deslocamento do quadril;
+* deslocamento do joelho;
+* deslocamento do tronco;
+* trajetória vertical;
+* velocidade;
+* amplitude.
+
+O sistema deve reconhecer que o agachamento envolve movimento simultâneo de quadril e joelho.
+
+Não classificar automaticamente o movimento como errado apenas porque o quadril se desloca para trás.
+
+==================================================
+6. TRAJETÓRIA VERTICAL
+
+Na visão lateral, criar uma análise da trajetória do movimento.
+
+Como não podemos medir diretamente o centro de massa corporal nem a linha de gravidade real apenas com landmarks 2D, criar uma aproximação visual.
+
+Utilizar como referência:
+
+* posição do pé/meio do pé;
+* trajetória do quadril;
+* trajetória do tronco;
+* e, quando uma barra estiver claramente detectada no vídeo, permitir futuramente adicionar a trajetória da barra.
+
+Não afirmar:
+
+“A linha de gravidade está exatamente aqui.”
+
+Utilizar:
+
+“Trajetória aproximada do movimento.”
+
+Criar uma linha/indicador visual mostrando a trajetória aproximada.
+
+==================================================
+7. JOELHO E PONTA DO PÉ
+
+NÃO considerar automaticamente que “joelho passou da ponta do pé” seja um erro.
+
+O sistema deve reconhecer que o joelho pode avançar além da ponta do pé durante um agachamento.
+
+O critério principal deve ser:
+
+* estabilidade do movimento;
+* trajetória;
+* controle;
+* consistência;
+* relação entre os segmentos corporais.
+
+Não gerar feedback negativo simplesmente porque o joelho passou da ponta do pé.
+
+==================================================
+8. TRONCO
+
+Durante a descida, calcular a inclinação do tronco:
+
+ombro → quadril
+
+Comparar essa inclinação ao longo da fase descendente.
+
+O tronco pode inclinar-se para frente durante um agachamento.
+
+Portanto:
+
+NÃO considerar qualquer inclinação como erro.
+
+Identificar somente mudanças excessivas ou abruptas em relação ao próprio padrão do usuário.
+
+Se houver uma mudança muito grande:
+
+“Foi observada uma alteração significativa na inclinação do tronco durante a descida.”
+
+Feedback:
+
+“Tente manter o tronco mais estável durante o movimento, sem perder o controle.”
+
+==================================================
+9. PROFUNDIDADE
+
+Identificar o ponto de maior flexão do movimento.
+
+Utilizar a relação entre:
+
+quadril
+joelho
+coxa
+
+para estimar a profundidade.
+
+Criar indicadores:
+
+* acima da paralela;
+* aproximadamente paralelo;
+* abaixo da paralela.
+
+IMPORTANTE:
+
+Não considerar automaticamente que “mais profundo = melhor”.
+
+A profundidade deve ser apresentada como uma característica da execução, não como uma regra universal.
+
+Se a meta configurada do treino for atingir determinada profundidade, comparar a execução com a meta configurada.
+
+Exemplo:
+
+Meta:
+coxas aproximadamente paralelas
+
+Resultado:
+atingiu a meta ✓
+
+ou:
+
+“Amplitude abaixo da meta configurada.”
+
+==================================================
+10. RETROVERSÃO PÉLVICA / “BUTT WINK”
+
+Criar uma tentativa experimental de detectar alteração da relação:
+
+quadril → tronco
+
+na região mais profunda do movimento.
+
+Observar se existe uma mudança consistente de orientação do segmento inferior do tronco/pelve no fundo.
+
+NÃO afirmar que qualquer pequena alteração representa “butt wink”.
+
+Usar:
+
+“Possível alteração da posição pélvica no fundo do movimento.”
+
+Somente mostrar esse feedback quando houver evidência suficiente.
+
+Se a câmera não tiver resolução/ângulo suficiente:
+
+“Não foi possível avaliar com confiança a posição pélvica.”
+
+Não inventar a avaliação.
+
+==================================================
+11. FASE ASCENDENTE
+
+Analisar a subida.
+
+Registrar:
+
+* velocidade do quadril;
+* velocidade do ombro/tronco;
+* velocidade do joelho;
+* relação temporal entre quadril e tronco.
+
+Criar detector para identificar possível padrão:
+
+“quadril sobe antes do tronco.”
+
+Esse padrão pode ser apresentado como:
+
+“Possível perda de sincronia na subida.”
+
+Não diagnosticar a causa.
+
+NÃO afirmar automaticamente:
+
+“Seu quadríceps está fraco.”
+
+Em vez disso:
+
+“Foi observado que o quadril iniciou a subida antes do tronco.”
+
+Feedback:
+
+“Tente manter quadril e tronco subindo de maneira mais coordenada.”
+
+==================================================
+12. FINALIZAÇÃO
+
+No topo da repetição:
+
+Verificar retorno à posição inicial.
+
+Observar:
+
+* extensão do quadril;
+* extensão do joelho;
+* estabilidade do tronco.
+
+Não incentivar hiperextensão lombar.
+
+Se houver movimento exagerado do tronco no final:
+
+“Evite projetar excessivamente o tronco para trás ao finalizar.”
+
+==================================================
+13. CHECKLIST AUTOMÁTICO
+
+Ao terminar cada repetição, gerar:
+
+CHECKLIST
+
+✓ Apoio do pé
+✓ Controle da descida
+✓ Amplitude
+✓ Estabilidade do tronco
+✓ Controle da subida
+✓ Finalização
+
+Cada item deve possuir:
+
+OK
+ATENÇÃO
+NÃO AVALIÁVEL
+
+Nunca transformar “não avaliável” em erro.
+
+==================================================
+14. ANÁLISE DE CADA REPETIÇÃO
+
+Exemplo:
+
+REPETIÇÃO 1
+
+Apoio:
+✓ OK
+
+Amplitude:
+✓ Dentro da meta
+
+Tronco:
+✓ Estável
+
+Subida:
+✓ Coordenada
+
+Índice experimental:
+93%
+
+⸻
+
+REPETIÇÃO 2
+
+Apoio:
+✓ OK
+
+Amplitude:
+⚠ Abaixo da meta
+
+Tronco:
+✓ Estável
+
+Subida:
+⚠ Possível perda de sincronia
+
+Índice experimental:
+84%
+
+==================================================
+15. ANÁLISE FINAL DO VÍDEO
+
+Ao terminar o exercício, criar um relatório detalhado.
+
+Título:
+
+“ANÁLISE DO SEU AGACHAMENTO”
+
+Mostrar:
+
+Número de repetições
+Índice médio
+Melhor repetição
+Repetição com menor índice
+Consistência
+
+Depois:
+
+“ANÁLISE POR FASE”
+
+SETUP
+DESCIDA
+PROFUNDIDADE
+SUBIDA
+FINALIZAÇÃO
+
+==================================================
+16. PRINCIPAIS ERROS
+
+Criar uma seção:
+
+“PRINCIPAIS PONTOS PARA MELHORAR”
+
+Selecionar somente os erros realmente detectados.
+
+Ordenar por frequência e/ou relevância dentro do algoritmo, mas não criar um diagnóstico.
+
+Exemplo:
+
+1. Amplitude abaixo da meta
+    Detectado em 4 de 8 repetições.
+2. Perda de sincronia na subida
+    Detectado em 3 de 8 repetições.
+3. Alteração da inclinação do tronco
+    Detectado em 2 de 8 repetições.
+
+==================================================
+17. FEEDBACK INDIVIDUALIZADO
+
+Cada erro deve gerar uma orientação específica.
+
+Exemplo:
+
+ERRO:
+Amplitude abaixo da meta.
+
+FEEDBACK:
+
+“Nas últimas repetições, sua amplitude ficou abaixo da meta configurada. Na próxima série, tente manter uma amplitude consistente e controlada.”
+
+⸻
+
+ERRO:
+Possível perda de sincronia na subida.
+
+FEEDBACK:
+
+“Na subida, seu quadril parece iniciar o movimento antes do tronco. Tente subir mantendo quadril e tronco mais coordenados.”
+
+⸻
+
+ERRO:
+Perda de apoio do calcanhar.
+
+FEEDBACK:
+
+“Foi observado que o calcanhar perdeu contato com o chão. Tente manter o apoio do pé estável durante a execução.”
+
+⸻
+
+ERRO:
+Alteração da posição do tronco.
+
+FEEDBACK:
+
+“Foi observada uma mudança significativa na inclinação do tronco durante o movimento. Tente manter maior controle da posição do tronco.”
+
+==================================================
+18. “COMO MELHORAR NA PRÓXIMA VEZ”
+
+Criar uma seção de grande destaque:
+
+COMO MELHORAR NA PRÓXIMA EXECUÇÃO
+
+Mostrar no máximo 3 prioridades.
+
+Exemplo:
+
+1️⃣ Controle a descida
+“Faça a descida de maneira mais controlada.”
+
+2️⃣ Mantenha a amplitude
+“Tente atingir a profundidade definida para seu treino.”
+
+3️⃣ Coordene a subida
+“Procure subir mantendo quadril e tronco mais sincronizados.”
+
+Não apresentar uma lista enorme de correções.
+
+O usuário deve sair sabendo exatamente quais são as 1–3 coisas mais importantes para trabalhar.
+
+==================================================
+19. FEEDBACK POSITIVO
+
+Não quero que o aplicativo apenas procure erros.
+
+Também identificar pontos positivos.
+
+Exemplo:
+
+“Você manteve boa consistência nas primeiras 6 repetições.”
+
+“Seu apoio dos pés permaneceu estável.”
+
+“Sua amplitude foi consistente durante a maior parte da série.”
+
+Isso deve ser baseado nos dados reais.
+
+==================================================
+20. COMPARAÇÃO ENTRE REPETIÇÕES
+
+Criar gráfico simples mostrando:
+
+Índice de execução por repetição.
+
+Exemplo:
+
+Rep 1 — 92%
+Rep 2 — 94%
+Rep 3 — 91%
+Rep 4 — 89%
+Rep 5 — 84%
+Rep 6 — 82%
+
+Detectar tendências.
+
+Exemplo:
+
+“Foi observada redução gradual do índice nas últimas repetições.”
+
+==================================================
+21. COMPARAÇÃO COM TREINOS FUTUROS
+
+Salvar os dados.
+
+Quando o usuário fizer outro treino:
+
+comparar:
+
+Treino anterior
+vs.
+Treino atual
+
+Exemplo:
+
+Índice médio:
+
+Anterior: 84%
+Atual: 91%
+
+Amplitude:
+
+Anterior: 82%
+Atual: 89%
+
+Consistência:
+
+Anterior: 76%
+Atual: 90%
+
+Mostrar:
+
+“Seu índice experimental de execução aumentou em relação ao treino anterior.”
+
+Não apresentar isso como melhora clínica.
+
+==================================================
+22. VISUALIZAÇÃO SOBRE O VÍDEO
+
+Durante a execução, mostrar:
+
+* landmarks;
+* linhas entre articulações;
+* trajetória aproximada do quadril;
+* trajetória aproximada do tronco;
+* indicador da posição do corpo.
+
+Quando detectar um possível erro, destacar visualmente o segmento envolvido.
+
+Exemplo:
+
+Joelho:
+⚠
+
+Tronco:
+⚠
+
+Amplitude:
+⚠
+
+Mas não deixar a tela visualmente poluída.
+
+==================================================
+23. MODO DEBUG
+
+Criar uma opção de desenvolvedor/debug.
+
+Quando ativada, mostrar:
+
+* landmarks;
+* coordenadas;
+* ângulos;
+* estado da repetição;
+* profundidade;
+* velocidade;
+* confiança;
+* erros detectados.
+
+Isso será utilizado para testar e calibrar o algoritmo.
+
+O modo debug não deve aparecer para usuários comuns.
+
+==================================================
+24. CALIBRAÇÃO E VALIDAÇÃO
+
+Criar parâmetros configuráveis no código.
+
+Não deixar todos os thresholds fixos e espalhados pelo código.
+
+Criar algo como:
+
+SQUAT_CONFIG
+
+contendo:
+
+depthThreshold
+trunkAngleThreshold
+hipAscentDifferenceThreshold
+heelContactThreshold
+confidenceThreshold
+velocityThreshold
+
+Isso permitirá ajustar o algoritmo depois dos testes.
+
+==================================================
+25. IMPORTANTE: NÃO INVENTAR ERROS
+
+O sistema deve preferir:
+
+“Não foi possível avaliar”
+
+a:
+
+“Erro detectado”
+
+quando os dados forem insuficientes.
+
+A confiança do sistema é mais importante que gerar muitos feedbacks.
+
+==================================================
+26. LIMITAÇÃO DA VISÃO 2D
+
+Adicionar discretamente no relatório:
+
+“A análise é baseada em visão computacional e depende do posicionamento da câmera, iluminação e visibilidade do corpo. Os resultados são estimativas e não substituem avaliação profissional.”
+
+Não colocar esse aviso de forma assustadora.
+
+==================================================
+27. TESTES
+
+Testar pelo menos:
+
+1. agachamento com boa amplitude;
+2. agachamento superficial;
+3. agachamento com perda de controle;
+4. variação da inclinação do tronco;
+5. possível alteração pélvica no fundo;
+6. possível perda de sincronização na subida;
+7. perda do contato do calcanhar;
+8. repetição incompleta;
+9. câmera muito próxima;
+10. câmera muito distante;
+11. baixa iluminação;
+12. corpo parcialmente fora da câmera;
+13. mais de uma pessoa;
+14. diferentes velocidades de execução.
+
+==================================================
+28. RESULTADO FINAL ESPERADO
+
+Quero que o FITAI passe de:
+
+“Contador de agachamentos”
+
+para:
+
+“Analisador experimental de execução do agachamento em visão lateral.”
+
+O usuário deve terminar o exercício sabendo:
+
+* quantas repetições realizou;
+* como cada repetição foi executada;
+* quais padrões positivos foram observados;
+* quais possíveis desvios foram identificados;
+* em quais repetições eles apareceram;
+* quais critérios não puderam ser avaliados;
+* quais são as 1–3 prioridades para melhorar;
+* como executar a próxima série com mais controle.
+
+Antes de concluir:
+
+Analise o código existente.
+
+Implemente as alterações incrementalmente.
+
+Não remova funcionalidades existentes.
+
+Teste a aplicação.
+
+Corrija erros de compilação.
+
+Informe exatamente quais partes da análise estão realmente implementadas e quais ainda são limitações do sistema.
+
+COMECE AGORA.
