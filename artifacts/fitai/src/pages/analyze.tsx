@@ -47,6 +47,8 @@ export default function Analyze() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const landmarkerRef = useRef<PoseLandmarker | null>(null);
+  const delegateRef = useRef<'GPU' | 'CPU'>('GPU');
+  const cpuFallbackInProgressRef = useRef(false);
   const animationRef = useRef<number | null>(null);
   const previousLandmarksRef = useRef<Point[] | null>(null);
   const motionRef = useRef<MotionState>('SETUP');
@@ -139,6 +141,39 @@ export default function Analyze() {
     const updated = [...repsRef.current, metric];
     repsRef.current = updated;
     setRepetitions(updated);
+  }, []);
+
+  const fallbackToCpu = useCallback(async () => {
+    if (delegateRef.current === 'CPU' || cpuFallbackInProgressRef.current) return;
+    cpuFallbackInProgressRef.current = true;
+    setDetectorDiagnostics((previous) => ({ ...previous, delegate: 'CPU…' }));
+    const previousLandmarker = landmarkerRef.current;
+    landmarkerRef.current = null;
+    previousLandmarker?.close();
+    try {
+      const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+      const cpuLandmarker = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numPoses: 2,
+        minPoseDetectionConfidence: SQUAT_CONFIG.confidenceThreshold,
+        minPosePresenceConfidence: SQUAT_CONFIG.confidenceThreshold,
+        minTrackingConfidence: SQUAT_CONFIG.confidenceThreshold,
+      });
+      if (!streamRef.current) {
+        cpuLandmarker.close();
+        return;
+      }
+      landmarkerRef.current = cpuLandmarker;
+      delegateRef.current = 'CPU';
+      setDetectorDiagnostics((previous) => ({ ...previous, delegate: 'CPU' }));
+      setError('');
+    } catch (cause) {
+      console.error('MediaPipe não conseguiu iniciar o processamento CPU.', cause);
+      setError('model-unavailable');
+    } finally {
+      cpuFallbackInProgressRef.current = false;
+    }
   }, []);
 
   const processPose = useCallback((poses: Point[][], timestamp: number) => {
@@ -234,15 +269,23 @@ export default function Analyze() {
   const analysisLoop = useCallback(() => {
     const video = videoRef.current;
     const landmarker = landmarkerRef.current;
-    if (!video || !landmarker || phase !== 'running') return;
+    if (!video || phase !== 'running') return;
     const now = performance.now();
-    if (video.readyState >= 2 && now - lastFrameRef.current > 45) {
+    if (landmarker && video.readyState >= 2 && now - lastFrameRef.current > 45) {
       lastFrameRef.current = now;
-      const result = landmarker.detectForVideo(video, now);
-      processPose((result.landmarks ?? []) as Point[][], now);
+      try {
+        const result = landmarker.detectForVideo(video, now);
+        processPose((result.landmarks ?? []) as Point[][], now);
+      } catch (cause) {
+        console.error('Falha durante o reconhecimento de pose.', cause);
+        setTrackingStatus('bodyNotDetected');
+        drawOverlay(null, 'bodyNotDetected');
+        if (delegateRef.current === 'GPU') void fallbackToCpu();
+        else setError('model-unavailable');
+      }
     }
     animationRef.current = requestAnimationFrame(analysisLoop);
-  }, [phase, processPose]);
+  }, [drawOverlay, fallbackToCpu, phase, processPose]);
 
   useEffect(() => {
     if (phase === 'running') animationRef.current = requestAnimationFrame(analysisLoop);
@@ -258,6 +301,7 @@ export default function Analyze() {
     streamRef.current = null;
     landmarkerRef.current?.close();
     landmarkerRef.current = null;
+    cpuFallbackInProgressRef.current = false;
     const reps = repsRef.current;
     if (reps.length) {
       const previous = loadHistory()[0] ?? null;
@@ -291,6 +335,7 @@ export default function Analyze() {
   useEffect(() => () => {
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
     landmarkerRef.current?.close();
   }, []);
 
@@ -311,15 +356,16 @@ export default function Analyze() {
       const options = {
         runningMode: 'VIDEO',
         numPoses: 2,
-        minPoseDetectionConfidence: 0.4,
-        minPosePresenceConfidence: 0.4,
-        minTrackingConfidence: 0.4,
+        minPoseDetectionConfidence: SQUAT_CONFIG.confidenceThreshold,
+        minPosePresenceConfidence: SQUAT_CONFIG.confidenceThreshold,
+        minTrackingConfidence: SQUAT_CONFIG.confidenceThreshold,
       } as const;
       try {
         landmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
           ...options,
           baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
         });
+        delegateRef.current = 'GPU';
         setDetectorDiagnostics((previous) => ({ ...previous, delegate: 'GPU' }));
       } catch (gpuError) {
         console.warn('MediaPipe GPU delegate indisponível; tentando CPU.', gpuError);
@@ -327,8 +373,10 @@ export default function Analyze() {
           ...options,
           baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
         });
+        delegateRef.current = 'CPU';
         setDetectorDiagnostics((previous) => ({ ...previous, delegate: 'CPU' }));
       }
+      cpuFallbackInProgressRef.current = false;
       repsRef.current = [];
       currentRepFramesRef.current = [];
       previousLandmarksRef.current = null;
@@ -347,7 +395,9 @@ export default function Analyze() {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       setPhase('setup');
-      setError(cause instanceof DOMException && cause.name === 'NotAllowedError' ? 'camera-blocked' : 'camera-unavailable');
+      setError(cause instanceof DOMException
+        ? cause.name === 'NotAllowedError' ? 'camera-blocked' : 'camera-unavailable'
+        : 'model-unavailable');
     }
   }, []);
 
@@ -389,7 +439,7 @@ export default function Analyze() {
             <div className="rounded-[1.5rem] bg-[hsl(var(--muted)/.72)] p-5">
               <div className="flex gap-3"><Info size={17} className="mt-0.5 shrink-0 text-[hsl(var(--accent))]" /><p className="text-xs leading-5 text-[hsl(var(--muted-foreground))]">A análise mostra uma trajetória aproximada em 2D. Ela não estima centro de massa, linha de gravidade real ou causa de possíveis desvios.</p></div>
             </div>
-             {error && <div data-testid="status-camera-error" className="rounded-[1.25rem] border border-[hsl(var(--destructive)/.28)] bg-[hsl(var(--destructive)/.08)] p-4 text-sm leading-5 text-[hsl(var(--destructive))]">{error === 'camera-blocked' ? 'A câmera está bloqueada. Permita o acesso nas configurações do navegador e tente novamente.' : error === 'zoom-unavailable' ? 'Este dispositivo não oferece zoom 0,5× pela câmera atual. Afaste o aparelho ou use 1×.' : 'Não foi possível acessar a câmera neste dispositivo ou navegador.'}</div>}
+              {error && <div data-testid="status-camera-error" className="rounded-[1.25rem] border border-[hsl(var(--destructive)/.28)] bg-[hsl(var(--destructive)/.08)] p-4 text-sm leading-5 text-[hsl(var(--destructive))]">{error === 'camera-blocked' ? 'A câmera está bloqueada. Permita o acesso nas configurações do navegador e tente novamente.' : error === 'zoom-unavailable' ? 'Este dispositivo não oferece zoom 0,5× pela câmera atual. Afaste o aparelho ou use 1×.' : error === 'model-unavailable' ? 'O modelo de reconhecimento não conseguiu iniciar neste navegador. Recarregue a página e tente novamente.' : 'Não foi possível acessar a câmera neste dispositivo ou navegador.'}</div>}
             <div className="mt-auto flex flex-wrap gap-3">
               {phase === 'setup' && <button type="button" onClick={startAnalysis} data-testid="button-start-analysis" className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[hsl(var(--secondary))] px-5 py-3.5 text-sm font-semibold text-[hsl(var(--secondary-foreground))] transition-transform hover:-translate-y-0.5"><Camera size={17} className="text-[hsl(var(--primary))]" /> Ativar câmera</button>}
               {phase === 'loading' && <button type="button" disabled data-testid="button-loading-analysis" className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[hsl(var(--secondary)/.65)] px-5 py-3.5 text-sm font-semibold text-[hsl(var(--secondary-foreground)/.6)]"><LoaderCircle size={17} className="animate-spin" /> Carregando análise</button>}

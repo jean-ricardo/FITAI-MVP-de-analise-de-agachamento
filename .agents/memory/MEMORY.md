@@ -1,0 +1,1 @@
+- [Pose inference recovery](pose-inference-recovery.md) — GPU failures can occur during inference after successful setup; keep the frame loop alive and retry on CPU.
