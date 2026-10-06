@@ -18,7 +18,7 @@ export type SquatConfig = {
 };
 
 export const SQUAT_CONFIG: SquatConfig = {
-  confidenceThreshold: 0.58,
+  confidenceThreshold: 0.4,
   depthThreshold: 112,
   parallelAngle: 100,
   trunkAngleThreshold: 15,

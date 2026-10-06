@@ -12,6 +12,7 @@ import {
   getTrackingStatus,
   isFullBodyVisible,
   LANDMARK_CONNECTIONS,
+  landmarkIsVisible,
   loadHistory,
   makeRepMetric,
   saveReport,
@@ -65,6 +66,7 @@ export default function Analyze() {
   const [repetitions, setRepetitions] = useState<RepMetric[]>([]);
   const [lastReport, setLastReport] = useState<FitaiReport | null>(null);
   const [debugFrame, setDebugFrame] = useState<SquatFrameMetrics | null>(null);
+  const [detectorDiagnostics, setDetectorDiagnostics] = useState({ poseCount: 0, landmarkCount: 0, delegate: 'iniciando' });
   const [cameraZoom, setCameraZoom] = useState<0.5 | 1>(1);
   const debugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
 
@@ -81,14 +83,14 @@ export default function Analyze() {
     const context = canvas.getContext('2d');
     if (!context) return;
     context.clearRect(0, 0, width, height);
-    if (status !== 'tracking') return;
+    if (!pose || status === 'bodyNotDetected' || status === 'multiple') return;
     context.lineCap = 'round';
     context.lineWidth = Math.max(2, width / 240);
     context.strokeStyle = 'rgba(205, 255, 62, .82)';
     LANDMARK_CONNECTIONS.forEach(([from, to]) => {
       const a = pose?.[from];
       const b = pose?.[to];
-      if (!a || !b) return;
+      if (!landmarkIsVisible(a) || !landmarkIsVisible(b)) return;
       context.beginPath();
       context.moveTo(a.x * width, a.y * height);
       context.lineTo(b.x * width, b.y * height);
@@ -105,7 +107,7 @@ export default function Analyze() {
       context.stroke();
     }
     pose?.forEach((point, index) => {
-      if (index < 11 || !point || point.visibility !== undefined && point.visibility < SQUAT_CONFIG.confidenceThreshold) return;
+      if (index < 11 || !point || !landmarkIsVisible(point)) return;
       context.fillStyle = index === 25 || index === 26 ? '#ff826a' : '#cdff3e';
       context.beginPath();
       context.arc(point.x * width, point.y * height, Math.max(3, width / 100), 0, Math.PI * 2);
@@ -140,6 +142,14 @@ export default function Analyze() {
   }, []);
 
   const processPose = useCallback((poses: Point[][], timestamp: number) => {
+    const visibleLandmarks = poses.length === 1
+      ? poses[0].filter((point) => point && landmarkIsVisible(point)).length
+      : 0;
+    setDetectorDiagnostics((previous) => ({
+      ...previous,
+      poseCount: poses.length,
+      landmarkCount: visibleLandmarks,
+    }));
     const baseStatus = getTrackingStatus(poses);
     const status = baseStatus === 'tracking' && !isFullBodyVisible(poses[0]) ? 'incomplete' : baseStatus;
     setTrackingStatus(status);
@@ -152,7 +162,7 @@ export default function Analyze() {
       motionRef.current = 'SETUP';
       minAngleRef.current = 180;
       setMotionState('SETUP');
-      drawOverlay(null, baseStatus);
+      drawOverlay(poses.length === 1 ? poses[0] : null, baseStatus);
       return;
     }
     const smoothed = smoothLandmarks(previousLandmarksRef.current, poses[0]);
@@ -166,7 +176,7 @@ export default function Analyze() {
     frame.phase = motionRef.current;
     hipTrajectoryRef.current = [...hipTrajectoryRef.current.slice(-90), { x: frame.hipX, y: frame.hipY }];
     trunkTrajectoryRef.current = [...trunkTrajectoryRef.current.slice(-90), { x: frame.shoulderX, y: frame.shoulderY }];
-    drawOverlay(smoothed, 'tracking');
+    drawOverlay(smoothed, status);
     setDebugFrame(frame);
     if (motionRef.current === 'SETUP') {
       baselineTrunkRef.current = baselineTrunkRef.current === null ? frame.trunkAngle : baselineTrunkRef.current * 0.9 + frame.trunkAngle * 0.1;
@@ -298,14 +308,27 @@ export default function Analyze() {
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
       const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-      landmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+      const options = {
         runningMode: 'VIDEO',
         numPoses: 2,
-        minPoseDetectionConfidence: SQUAT_CONFIG.confidenceThreshold,
-        minPosePresenceConfidence: SQUAT_CONFIG.confidenceThreshold,
-        minTrackingConfidence: SQUAT_CONFIG.confidenceThreshold,
-      });
+        minPoseDetectionConfidence: 0.4,
+        minPosePresenceConfidence: 0.4,
+        minTrackingConfidence: 0.4,
+      } as const;
+      try {
+        landmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
+          ...options,
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+        });
+        setDetectorDiagnostics((previous) => ({ ...previous, delegate: 'GPU' }));
+      } catch (gpuError) {
+        console.warn('MediaPipe GPU delegate indisponível; tentando CPU.', gpuError);
+        landmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
+          ...options,
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
+        });
+        setDetectorDiagnostics((previous) => ({ ...previous, delegate: 'CPU' }));
+      }
       repsRef.current = [];
       currentRepFramesRef.current = [];
       previousLandmarksRef.current = null;
@@ -316,6 +339,7 @@ export default function Analyze() {
       motionRef.current = 'SETUP';
       setMotionState('SETUP');
       setTrackingStatus('incomplete');
+      setDetectorDiagnostics({ poseCount: 0, landmarkCount: 0, delegate: 'iniciando' });
       setRepetitions([]);
       startedAtRef.current = Date.now();
       setPhase('running');
@@ -351,7 +375,7 @@ export default function Analyze() {
               {phase === 'running' && <div className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-[#141923] via-[#141923]/70 to-transparent px-5 pb-4 pt-12 text-[hsl(var(--secondary-foreground))] md:px-7"><div><p className="font-mono-fitai text-[10px] uppercase tracking-[.15em] text-[hsl(var(--secondary-foreground)/.5)]">estado do movimento</p><p data-testid="text-motion-state" className="mt-1 text-lg font-semibold">{labelForState(motionState)}</p></div><div className={`rounded-full px-3 py-1.5 text-[11px] font-medium ${trackingStatus === 'tracking' ? 'bg-[hsl(var(--primary)/.16)] text-[hsl(var(--primary))]' : 'bg-[hsl(var(--accent)/.16)] text-[hsl(var(--accent))]'}`}>{status.title}</div></div>}
             </div>
             {phase === 'running' && <div data-testid="status-camera-tracking" className={`flex items-center gap-2 border-t border-[hsl(var(--secondary-foreground)/.12)] px-5 py-3 text-xs ${trackingStatus === 'tracking' ? 'text-[hsl(var(--secondary-foreground)/.62)]' : 'text-[hsl(var(--accent))]'}`}>{trackingStatus === 'multiple' ? <UsersRound size={15} /> : trackingStatus === 'incomplete' ? <CircleAlert size={15} /> : trackingStatus === 'bodyNotDetected' ? <UserRound size={15} /> : <CheckCircle2 size={15} />} {status.body}</div>}
-            {debugEnabled && debugFrame && <div data-testid="debug-analysis-panel" className="grid grid-cols-2 gap-2 border-t border-[hsl(var(--secondary-foreground)/.12)] px-5 py-4 font-mono-fitai text-[10px] text-[hsl(var(--secondary-foreground)/.7)] md:grid-cols-4"><span>ângulo {Math.round(debugFrame.kneeAngle)}°</span><span>tronco {Math.round(debugFrame.trunkAngle)}°</span><span>confiança {Math.round(debugFrame.confidence * 100)}%</span><span>trajetória {hipTrajectoryRef.current.length} pts</span></div>}
+             {debugEnabled && <div data-testid="debug-analysis-panel" className="grid grid-cols-2 gap-2 border-t border-[hsl(var(--secondary-foreground)/.12)] px-5 py-4 font-mono-fitai text-[10px] text-[hsl(var(--secondary-foreground)/.7)] md:grid-cols-4"><span>delegate {detectorDiagnostics.delegate}</span><span>poses {detectorDiagnostics.poseCount}</span><span>landmarks {detectorDiagnostics.landmarkCount}</span><span>{debugFrame ? `ângulo ${Math.round(debugFrame.kneeAngle)}° · confiança ${Math.round(debugFrame.confidence * 100)}%` : 'esperando landmarks'}</span></div>}
           </section>
           <aside className="flex flex-col gap-4">
             <div className="rounded-[1.5rem] border border-[hsl(var(--border))] bg-[hsl(var(--card)/.62)] p-5 md:p-6">
