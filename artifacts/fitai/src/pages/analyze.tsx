@@ -120,14 +120,18 @@ export default function Analyze() {
   const applyCameraZoom = useCallback(async (zoom: 0.5 | 1) => {
     const track = streamRef.current?.getVideoTracks()[0];
     if (!track) return;
-    const capabilities = track.getCapabilities() as MediaTrackCapabilities & {
-      zoom?: { min: number; max: number; step?: number };
-    };
-    if (!capabilities.zoom || zoom < capabilities.zoom.min || zoom > capabilities.zoom.max) {
-      setError('zoom-unavailable');
-      return;
-    }
     try {
+      if (typeof track.getCapabilities !== 'function') {
+        setError('zoom-unavailable');
+        return;
+      }
+      const capabilities = track.getCapabilities() as MediaTrackCapabilities & {
+        zoom?: { min: number; max: number; step?: number };
+      };
+      if (!capabilities.zoom || zoom < capabilities.zoom.min || zoom > capabilities.zoom.max) {
+        setError('zoom-unavailable');
+        return;
+      }
       await track.applyConstraints({ advanced: [{ zoom } as unknown as MediaTrackConstraintSet] });
       setCameraZoom(zoom);
       setError('');
@@ -149,8 +153,8 @@ export default function Analyze() {
     setDetectorDiagnostics((previous) => ({ ...previous, delegate: 'CPU…' }));
     const previousLandmarker = landmarkerRef.current;
     landmarkerRef.current = null;
-    previousLandmarker?.close();
     try {
+      previousLandmarker?.close();
       const vision = await FilesetResolver.forVisionTasks(WASM_URL);
       const cpuLandmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
