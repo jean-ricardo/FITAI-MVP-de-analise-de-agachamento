@@ -1,0 +1,469 @@
+PROMPT MESTRE — FITAI | SISTEMA AVANÇADO DE ANÁLISE DE AGACHAMENTO COM COMPUTER VISION
+
+Quero que você atualize o aplicativo FITAI que já está em desenvolvimento, implementando um sistema avançado de análise biomecânica do agachamento livre com barra, utilizando Computer Vision e Pose Estimation.
+
+IMPORTANTE: NÃO RECRIE O APLICATIVO DO ZERO. Analise a arquitetura, o código, as telas, os componentes de câmera e o sistema de análise existentes. Preserve todas as funcionalidades que já funcionam e implemente as melhorias diretamente no projeto atual.
+
+O objetivo é transformar o módulo de agachamento em um sistema capaz de analisar a execução gravada pela câmera do celular, identificar desvios técnicos observáveis, fornecer correções específicas e apresentar um relatório individual ao final do exercício.
+
+O sistema deve funcionar com gravação lateral, em tempo real quando possível, e também com análise posterior do vídeo gravado.
+
+⸻
+
+1. CONFIGURAÇÃO DA CÂMERA E POSICIONAMENTO
+
+A análise principal deve utilizar o plano sagital, ou seja, a visão lateral do praticante.
+
+Antes de iniciar a gravação, exiba instruções claras:
+
+* Posicione o celular lateralmente ao praticante, aproximadamente perpendicular ao plano de movimento.
+* Mantenha a câmera estável, preferencialmente apoiada em um tripé.
+* Enquadre o corpo inteiro, incluindo cabeça, ombros, quadril, joelhos, tornozelos, calcanhares e pontas dos pés.
+* Evite obstáculos, roupas que dificultem a identificação das articulações, contraluz intensa e ambientes escuros.
+* Para agachamentos com barra, solicite que a barra e os discos permaneçam visíveis sempre que possível.
+* Permita que o usuário confira o enquadramento antes de iniciar a análise.
+
+Crie uma verificação automática de enquadramento. Se pontos essenciais estiverem fora da imagem ou encobertos, informe quais pontos precisam ficar visíveis.
+
+Não inicie uma avaliação biomecânica completa quando a qualidade da imagem for insuficiente.
+
+2. IMPLEMENTAR CÂMERA ULTRA-ANGULAR 0,5x EM IPHONE E ANDROID
+
+Esta funcionalidade é obrigatória.
+
+Adicione à interface de gravação um controle visível para selecionar o zoom ou a lente da câmera, com opções como:
+
+* 0,5x — Ultra-angular
+* 1x — Padrão
+* Outras lentes disponíveis, quando suportadas pelo dispositivo.
+
+O modo 0,5x deve utilizar a lente ultra-angular real do dispositivo sempre que ela estiver disponível, em vez de apenas reduzir digitalmente a imagem.
+
+Requisitos técnicos
+
+1. Detecte as câmeras e os dispositivos de captura disponíveis no aparelho.
+2. Em iPhones, utilize as APIs nativas do iOS, quando necessário, para identificar e selecionar a câmera ultra-angular compatível.
+3. Em Android, utilize as APIs de câmera compatíveis com o dispositivo para identificar e selecionar a lente ultra-angular.
+4. Se o aplicativo utilizar tecnologias multiplataforma, como React Native, Flutter ou uma aplicação web, implemente a solução compatível com a arquitetura existente.
+5. Em aplicações web, utilize as capacidades de câmera disponibilizadas pelo navegador, incluindo getUserMedia, enumerateDevices e os recursos de zoom suportados, verificando as limitações reais de cada dispositivo.
+6. Diferencie a seleção de uma lente física ultra-angular de um zoom digital de 0,5x. Não apresente zoom digital como se fosse a lente física.
+7. Caso a lente 0,5x não esteja disponível, desabilite essa opção ou apresente uma mensagem explicando a limitação.
+8. Não prometa compatibilidade universal. Verifique os recursos reais do aparelho, sistema operacional, navegador e permissões.
+9. Ao alternar de lente, preserve o estado da sessão e retome a gravação com segurança, sem perder a análise já realizada.
+10. Mantenha a visualização da câmera grande e expansível, permitindo que o usuário confira claramente o corpo inteiro.
+11. Recalcule a calibração e os pontos de referência depois de qualquer troca de lente, zoom ou resolução.
+12. Caso seja necessário desenvolver módulos nativos, implemente-os de forma integrada ao projeto atual, sem substituir desnecessariamente a tecnologia já utilizada.
+
+O objetivo é permitir que o usuário afaste o celular ou utilize a lente ultra-angular para enquadrar o corpo inteiro em espaços pequenos, como academias.
+
+Critério de conclusão: testar a troca entre 0,5x e 1x nos dispositivos compatíveis, confirmar que o campo de visão realmente muda e verificar se a análise de pose continua funcionando corretamente.
+
+⸻
+
+3. SISTEMA DE POSE ESTIMATION E KEYPOINTS
+
+Utilize o mecanismo de estimativa de pose já existente no aplicativo. Se ainda não houver um modelo adequado, avalie opções como MediaPipe Pose Landmarker, MoveNet ou YOLO-Pose, considerando a plataforma e o desempenho necessário.
+
+O sistema deve identificar, no mínimo, os seguintes pontos anatômicos:
+
+* Orelha ou referência da cabeça.
+* Ombro.
+* Quadril.
+* Joelho.
+* Tornozelo.
+* Calcanhar.
+* Ponta do pé.
+
+Quando disponíveis, utilize também os pontos de ambos os lados do corpo para verificar oclusões e inconsistências.
+
+Para cada ponto, armazene:
+
+* Coordenadas X e Y normalizadas.
+* Confiança ou visibilidade estimada pelo modelo.
+* Posição ao longo do tempo.
+* Estado de visibilidade e validade.
+* Suavização temporal necessária para reduzir oscilações.
+
+Utilize coordenadas normalizadas ou transformadas para um sistema de referência consistente. Considere que o eixo Y normalmente aumenta para baixo nas imagens.
+
+Não confunda coordenadas da imagem com medidas físicas. Para calcular distâncias, velocidades e ângulos de forma consistente, utilize uma referência geométrica adequada.
+
+Implemente filtros temporais, como média móvel ou filtros de baixa latência, para reduzir ruídos sem atrasar excessivamente a detecção de erros.
+
+Se os pontos essenciais estiverem encobertos, apresentarem baixa confiança ou sofrerem saltos incompatíveis com o movimento humano, classifique o critério correspondente como “Não foi possível avaliar”.
+
+Não invente pontos, não mantenha coordenadas antigas como se fossem atuais e não gere correções definitivas com base em dados insuficientes.
+
+⸻
+
+4. DETECÇÃO DAS FASES DO AGACHAMENTO
+
+Implemente uma máquina de estados para identificar:
+
+1. Posição inicial.
+2. Fase excêntrica — descida.
+3. Ponto mais baixo — bottom position.
+4. Fase concêntrica — subida.
+5. Posição final.
+6. Repetição concluída.
+
+Utilize a trajetória do quadril, os ângulos articulares e a velocidade do movimento para identificar as transições.
+
+A contagem de repetições deve ser baseada em uma sequência coerente de descida e subida, e não em oscilações isoladas dos pontos de referência.
+
+Registre as métricas de cada repetição individualmente, permitindo identificar em qual fase ocorreu cada desvio.
+
+⸻
+
+5. ANÁLISE DA LINHA DE CARGA E DO MEIO DO PÉ
+
+Identifique a posição do calcanhar e da ponta do pé para estimar o meio do pé:
+
+X_meio_do_pe = (X_calcanhar + X_ponta_do_pe) / 2
+
+Compare essa referência com a posição projetada do ombro e, quando detectável, com a posição da barra.
+
+A posição do ombro é apenas uma aproximação do posicionamento da carga. Não afirme que ela representa exatamente a barra ou o centro de massa.
+
+Implemente:
+
+* Acompanhamento da posição relativa durante a descida e a subida.
+* Cálculo da diferença horizontal normalizada.
+* Tolerância configurável, calibrada para o enquadramento e a variação corporal.
+* Avaliação da estabilidade dessa relação durante a repetição.
+
+Quando houver evidência suficiente de projeção excessiva da carga para a frente, apresente:
+
+“Revise o equilíbrio e o posicionamento da carga. Procure manter a carga equilibrada sobre a região média dos pés.”
+
+Quando houver evidência suficiente de deslocamento excessivo para trás, apresente:
+
+“Revise sua distribuição de equilíbrio e a trajetória do movimento.”
+
+Não classifique automaticamente toda diferença entre ombro e meio do pé como erro. Considere a inclinação natural do tronco, a técnica utilizada, a modalidade do agachamento e a incerteza da estimativa.
+
+Se a barra estiver fora do enquadramento, não informe que sua posição foi medida diretamente.
+
+⸻
+
+6. ANÁLISE DA PROFUNDIDADE DO AGACHAMENTO
+
+Calcule o ângulo do joelho utilizando os pontos do quadril, joelho e tornozelo.
+
+Implemente a função matemática de ângulo entre três pontos, protegendo contra divisões por zero e coordenadas inválidas.
+
+Registre o menor ângulo do joelho durante a repetição e a relação vertical entre quadril e joelho no ponto mais baixo.
+
+Como referência visual, considerando que o eixo Y aumenta para baixo:
+
+Y_quadril > Y_joelho
+
+Essa relação pode indicar que o quadril está abaixo da altura do joelho, mas não deve ser a única condição para determinar a profundidade.
+
+Avalie conjuntamente:
+
+* Ângulo de flexão do joelho.
+* Posição relativa do quadril.
+* Identificação correta do ponto mais baixo.
+* Visibilidade dos pontos anatômicos.
+* Perspectiva e enquadramento.
+
+Utilize 90° de flexão do joelho como referência configurável, e não como uma definição universal de agachamento perfeito.
+
+Se o usuário não atingir a amplitude definida para o exercício, apresente:
+
+“Você pode precisar de maior amplitude para atingir o objetivo configurado. Procure descer com controle, respeitando sua mobilidade e mantendo uma execução estável.”
+
+Quando o quadril ultrapassar a altura do joelho, não classifique automaticamente a execução como perfeita. Continue avaliando os demais critérios.
+
+Permita configurar objetivos de amplitude, como agachamento parcial, paralelo ou abaixo do paralelo, conforme a finalidade do exercício.
+
+⸻
+
+7. ANÁLISE DA INCLINAÇÃO DO TRONCO E DA TÍBIA
+
+Calcule os ângulos dos segmentos:
+
+* Tronco: quadril até ombro.
+* Tíbia: tornozelo até joelho.
+
+Utilize uma referência angular consistente, convertendo os resultados para graus e normalizando as diferenças angulares para evitar erros próximos de 180° e 360°.
+
+Calcule:
+
+Diferença angular = menor diferença entre o ângulo do tronco e o da tíbia.
+
+Implemente um limiar inicial configurável de 15°, utilizado apenas como parâmetro experimental.
+
+Não trate essa diferença isoladamente como falha técnica. A inclinação adequada varia com a anatomia, a mobilidade, a proporção entre fêmur e tronco, a posição da barra e a técnica de agachamento.
+
+Se houver desvio relevante em relação ao padrão de execução escolhido pelo usuário, apresente:
+
+“Revise a relação entre a inclinação do tronco e a posição das canelas. Ajuste a postura de acordo com a técnica escolhida, mantendo controle e estabilidade.”
+
+Não exija que tronco e tíbia sejam perfeitamente paralelos.
+
+⸻
+
+8. SINCRONIA ENTRE QUADRIL E OMBROS NA SUBIDA
+
+Durante a fase concêntrica, calcule a variação temporal das coordenadas do quadril e do ombro.
+
+Como o eixo Y cresce para baixo, a subida geralmente corresponde a uma redução das coordenadas Y.
+
+Não compare somente os deslocamentos absolutos de quadril e ombro, porque esses pontos estão em alturas diferentes e possuem amplitudes de movimento distintas.
+
+Implemente uma análise que considere:
+
+* Velocidade vertical suavizada do quadril.
+* Velocidade vertical suavizada do ombro.
+* Início relativo do movimento de cada ponto.
+* Deslocamento normalizado em relação à amplitude da repetição.
+* Evolução dos ângulos do tronco e do quadril.
+* Duração da fase concêntrica.
+
+Detecte um possível padrão de “quadril subindo primeiro” quando houver elevação precoce e desproporcional do quadril acompanhada de mudança relevante da inclinação do tronco.
+
+Não use simplesmente uma razão entre deslocamentos brutos como regra definitiva, pois o denominador pode ser próximo de zero.
+
+Quando o padrão estiver presente e os dados forem confiáveis, apresente:
+
+“Seu quadril está subindo antes do tronco. Tente coordenar melhor a subida, mantendo o tronco firme e a carga equilibrada.”
+
+A mensagem deve ser apresentada somente quando o desvio for suficientemente consistente, e não por pequenas oscilações naturais.
+
+⸻
+
+9. ESTABILIDADE DOS PÉS E DO CALCANHAR
+
+Acompanhe a posição do calcanhar e da ponta do pé ao longo de toda a repetição.
+
+Verifique:
+
+* Deslocamento vertical do calcanhar.
+* Alterações da posição relativa entre calcanhar e ponta do pé.
+* Indícios visuais de perda de contato com o solo.
+* Movimentos inesperados dos pés durante a execução.
+
+Considere que a câmera lateral em duas dimensões não consegue comprovar perfeitamente o contato físico com o chão.
+
+Não declare que o calcanhar está apoiado apenas porque sua coordenada vertical permaneceu estável. Use essa informação como indicador visual e informe a limitação quando necessário.
+
+Se houver evidência suficiente de elevação do calcanhar, apresente:
+
+“Seu calcanhar parece estar perdendo contato com o chão. Revise a estabilidade dos pés e o controle do movimento.”
+
+Se os pés estiverem fora da imagem, marque o critério como não avaliável.
+
+⸻
+
+10. DETECÇÃO DE POSSÍVEL RETROVERSÃO PÉLVICA (BUTT WINK)
+
+Implemente uma análise experimental da mudança de orientação do tronco e da região pélvica durante a descida, especialmente próximo do ponto mais baixo.
+
+Acompanhe:
+
+* Ângulo do tronco.
+* Trajetória do quadril.
+* Mudança angular na parte final da descida.
+* Comportamento durante repetições consecutivas.
+* Qualidade e estabilidade dos pontos detectados.
+
+Utilize a mudança brusca e repetida da orientação do tronco como um possível sinal de alteração da posição lombopélvica, nunca como confirmação direta de retroversão pélvica.
+
+Limitação importante: uma câmera lateral com keypoints corporais comuns não mede diretamente a orientação da pelve nem comprova flexão lombar. Para uma avaliação mais confiável, seria necessário identificar referências específicas da pelve e da coluna, quando visíveis, ou utilizar sensores adicionais.
+
+Quando houver apenas indícios visuais, apresente:
+
+“Foi identificada uma mudança acentuada da postura na parte inferior do agachamento. Revise o controle da descida e a amplitude utilizada.”
+
+Não diagnostique lesões, não afirme que a coluna está em risco e não determine que a pessoa precisa reduzir a amplitude sem considerar o contexto.
+
+⸻
+
+11. DIFERENCIAÇÃO ENTRE HIGH BAR E LOW BAR
+
+Adicione uma opção para selecionar a variação do exercício antes de começar:
+
+* Agachamento High Bar.
+* Agachamento Low Bar.
+* Agachamento sem barra.
+* Outro padrão configurável.
+
+Adapte as referências de inclinação do tronco e trajetória conforme a variação escolhida.
+
+Não imponha os mesmos limites angulares a todas as técnicas.
+
+Utilize inicialmente os limites como parâmetros configuráveis, com valores experimentais identificados no código e na interface administrativa.
+
+Não invente limites biomecânicos universais nem afirme que existe um único conjunto de ângulos que representa o agachamento perfeito para todas as pessoas.
+
+⸻
+
+12. SISTEMA DE FEEDBACK EM TEMPO REAL
+
+Durante a gravação, mostre orientações curtas, claras e específicas.
+
+Exemplos:
+
+* “Mantenha os pés totalmente enquadrados.”
+* “Abaixe a câmera ou ajuste o enquadramento.”
+* “Não foi possível identificar seu joelho.”
+* “Desça com controle.”
+* “Revise a profundidade.”
+* “Observe a estabilidade dos calcanhares.”
+* “Revise a coordenação entre quadril e tronco.”
+* “A qualidade da imagem está baixa. Reposicione o celular.”
+
+Não apresente todas as mensagens simultaneamente.
+
+Crie um sistema de prioridade:
+
+1. Segurança e problemas críticos de captura.
+2. Falta de visibilidade dos pontos.
+3. Desvios técnicos relevantes.
+4. Orientações gerais de execução.
+
+Utilize persistência temporal para evitar que o feedback pisque a cada quadro. Uma mensagem deve permanecer por tempo suficiente para ser compreendida, mas não pode esconder avisos mais importantes.
+
+Evite feedback contraditório na mesma repetição. Se houver vários desvios, priorize o mais relevante e registre os demais para o relatório final.
+
+O processamento deve ser otimizado para o dispositivo. Quando a análise em tempo real for inviável, ofereça a gravação com processamento posterior sem travar a interface.
+
+⸻
+
+13. RELATÓRIO DETALHADO AO FINAL DO VÍDEO
+
+Ao terminar a gravação, apresente uma tela de análise com:
+
+* Número de repetições detectadas.
+* Quantidade de repetições avaliáveis.
+* Profundidade de cada repetição.
+* Ângulo mínimo do joelho.
+* Variação da inclinação do tronco.
+* Indicadores de estabilidade dos pés.
+* Possíveis alterações na coordenação da subida.
+* Critérios não avaliáveis.
+* Principais pontos positivos.
+* Principais desvios detectados.
+* Sugestões práticas para a próxima série.
+
+Para cada desvio, mostre:
+
+1. Nome do critério.
+2. Momento aproximado do vídeo.
+3. Repetição em que ocorreu.
+4. Evidência utilizada para identificá-lo.
+5. Nível de confiança.
+6. Orientação específica para a próxima tentativa.
+
+Quando possível, permita tocar em um erro para reproduzir o trecho correspondente do vídeo.
+
+Não transforme uma estimativa visual em uma medição exata quando o sistema não tiver calibração suficiente.
+
+⸻
+
+14. CONFIANÇA, VALIDAÇÃO E CRITÉRIOS NÃO AVALIÁVEIS
+
+Implemente um mecanismo de confiança independente para cada critério biomecânico.
+
+Os limites de confiança devem ser configuráveis e testados com gravações reais.
+
+Um critério poderá receber os estados:
+
+* Avaliado.
+* Desvio identificado.
+* Sem desvio relevante identificado.
+* Não foi possível avaliar.
+
+O estado “Não foi possível avaliar” é obrigatório para pontos ocultos, falhas de rastreamento, baixa qualidade de imagem, perspectiva inadequada ou falta de evidências.
+
+Não atribua nota zero por ausência de dados.
+
+Não classifique automaticamente uma repetição como perfeita só porque nenhum erro foi detectado.
+
+Separe claramente a confiança do modelo de pose da confiança da interpretação biomecânica.
+
+⸻
+
+15. PONTUAÇÃO DE EXECUÇÃO
+
+Crie, se compatível com o sistema atual, uma pontuação de qualidade técnica por repetição e uma pontuação geral da sessão.
+
+A pontuação deve:
+
+* Utilizar apenas critérios realmente avaliados.
+* Considerar a confiabilidade dos pontos detectados.
+* Aplicar pesos configuráveis.
+* Evitar penalizar o usuário por dados ausentes.
+* Mostrar quais fatores influenciaram o resultado.
+* Evitar apresentar precisão falsa.
+
+Mostre a cobertura da avaliação. Por exemplo, se apenas quatro de seis critérios forem avaliáveis, informe isso claramente.
+
+A pontuação é uma estimativa interna do aplicativo, não uma certificação clínica ou prova de que a execução é perfeita.
+
+⸻
+
+16. ARQUITETURA E QUALIDADE DO CÓDIGO
+
+Organize a implementação em módulos independentes, respeitando a arquitetura já existente:
+
+* Captura e gerenciamento de câmera.
+* Seleção de lentes e zoom.
+* Detecção de pose.
+* Rastreamento temporal dos keypoints.
+* Cálculo de ângulos e vetores.
+* Máquina de estados do agachamento.
+* Regras biomecânicas.
+* Gerenciamento de confiança.
+* Motor de feedback.
+* Relatório final.
+
+Centralize os parâmetros e thresholds em uma configuração única, evitando valores repetidos e contraditórios pelo código.
+
+Implemente tratamento de erros, permissões, encerramento de câmera, troca de lente, retomada da gravação e desempenho em dispositivos com recursos limitados.
+
+Preserve a privacidade dos usuários. Sempre que possível, processe os vídeos localmente. Se houver envio para servidores, informe claramente essa operação e utilize armazenamento e transmissão seguros.
+
+Não deixe botões decorativos sem funcionalidade. A troca de câmera, o zoom, o início da gravação, a finalização e a reprodução dos erros precisam funcionar de verdade.
+
+⸻
+
+17. TESTES OBRIGATÓRIOS ANTES DE CONCLUIR
+
+Após implementar as melhorias:
+
+1. Teste um agachamento completo gravado lateralmente.
+2. Teste um agachamento raso.
+3. Teste uma gravação com os pés fora do enquadramento.
+4. Teste um vídeo com baixa iluminação.
+5. Teste a perda temporária de um keypoint.
+6. Teste a detecção do início, fundo e subida.
+7. Teste a análise de várias repetições consecutivas.
+8. Teste a troca entre as lentes 0,5x e 1x em aparelhos compatíveis.
+9. Verifique se a troca de lente não quebra o rastreamento corporal.
+10. Teste em pelo menos um iPhone e um aparelho Android, quando disponíveis.
+11. Verifique se o relatório final apresenta correções específicas, em vez de apenas contar repetições.
+12. Confirme que erros não avaliáveis não são apresentados como falhas confirmadas.
+
+Não considere a tarefa concluída apenas porque a tela foi criada. As funções precisam estar conectadas ao processamento real do vídeo.
+
+⸻
+
+18. ENTREGA FINAL
+
+Implemente as alterações diretamente no projeto existente.
+
+Ao concluir, apresente:
+
+* Arquivos e componentes alterados.
+* Funcionalidades efetivamente implementadas.
+* Bibliotecas ou APIs utilizadas.
+* Limitações conhecidas de cada dispositivo.
+* Testes executados e respectivos resultados.
+* Funcionalidades que ainda dependem de validação ou desenvolvimento adicional.
+
+Se alguma parte não puder ser implementada devido às limitações da tecnologia atual, explique o motivo e apresente a alternativa tecnicamente viável.
+
+RESULTADO ESPERADO: o FITAI deve funcionar como um assistente de análise técnica do agachamento por vídeo lateral, fornecendo feedback útil, específico, baseado em evidências visuais, com suporte à câmera ultra-angular 0,5x quando disponível, sem inventar medições ou declarar perfeição biomecânica sem fundamento.
