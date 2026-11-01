@@ -1,8 +1,9 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BarChart3, CalendarDays, Check, ChevronRight, CircleAlert, CircleHelp, Info, RotateCcw, ShieldCheck, Target, X } from 'lucide-react';
+import { useAuth } from '@clerk/react';
 import { Link } from 'wouter';
 import { AppShell } from '@/components/app-shell';
-import { loadReport, type ChecklistStatus, type FitaiReport, type RepMetric } from '@/lib/fitai-analysis';
+import { clearReport, loadReport, type ChecklistStatus, type FitaiReport, type RepMetric } from '@/lib/fitai-analysis';
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value)).replace('.', '');
@@ -21,8 +22,9 @@ function StatusIcon({ status }: { status: ChecklistStatus }) {
 }
 
 export default function Report() {
+  const { userId } = useAuth();
   const [report, setReport] = useState<FitaiReport | null>(null);
-  useEffect(() => setReport(loadReport()), []);
+  useEffect(() => setReport(userId ? loadReport(userId) : null), [userId]);
 
   return (
     <AppShell>
@@ -31,7 +33,7 @@ export default function Report() {
           <div><div className="mb-3 flex items-center gap-2 font-mono-fitai text-[10px] uppercase tracking-[.17em] text-[hsl(var(--accent))]"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--accent))]" /> histórico / squat lateral</div><h1 className="text-4xl font-semibold tracking-[-.06em] md:text-5xl">Análise do seu agachamento</h1></div>
           {report && <div data-testid="text-report-date" className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><CalendarDays size={15} /> {formatDate(report.completedAt)}</div>}
         </div>
-        {!report ? <EmptyReport /> : <ReportContent report={report} onClear={() => { localStorage.removeItem('fitai:last-report'); setReport(null); }} />}
+        {!report ? <EmptyReport /> : <ReportContent report={report} onClear={() => { clearReport(userId ?? undefined); setReport(null); }} />}
       </div>
     </AppShell>
   );
@@ -50,8 +52,10 @@ function EmptyReport() {
 }
 
 function consistency(repetitions: RepMetric[]) {
-  if (repetitions.length < 2) return null;
-  const values = repetitions.map((rep) => rep.executionIndex);
+  const values = repetitions
+    .map((rep) => rep.executionIndex)
+    .filter((value): value is number => value !== null);
+  if (values.length < 2) return null;
   const range = Math.max(...values) - Math.min(...values);
   return Math.round(Math.max(0, 100 - range * 2));
 }
@@ -59,11 +63,13 @@ function consistency(repetitions: RepMetric[]) {
 function ReportContent({ report, onClear }: { report: FitaiReport; onClear: () => void }) {
   const repetitions = report.repetitions ?? [];
   const index = report.executionIndex;
-  const best = repetitions.length ? Math.max(...repetitions.map((rep) => rep.executionIndex)) : null;
-  const worst = repetitions.length ? Math.min(...repetitions.map((rep) => rep.executionIndex)) : null;
+  const scoredRepetitions = repetitions.filter((rep) => rep.executionIndex !== null);
+  const scores = scoredRepetitions.map((rep) => rep.executionIndex as number);
+  const best = scores.length ? Math.max(...scores) : null;
+  const worst = scores.length ? Math.min(...scores) : null;
   const stable = consistency(repetitions);
   const phaseAnalysis = report.phaseAnalysis ?? [];
-  const chartMax = Math.max(...repetitions.map((rep) => rep.executionIndex), 100);
+  const chartMax = Math.max(...scores, 100);
   const [openRep, setOpenRep] = useState<number | null>(repetitions[0]?.id ?? null);
   const phaseLabel: Record<string, string> = { SETUP: 'Setup', DESCIDA: 'Descida', PROFUNDIDADE: 'Profundidade', SUBIDA: 'Subida', FINALIZAÇÃO: 'Finalização' };
   const comparison = report.previousComparison;
@@ -100,8 +106,8 @@ function ReportContent({ report, onClear }: { report: FitaiReport; onClear: () =
         </div>
         <div className="rounded-[1.5rem] bg-[hsl(var(--secondary))] p-5 text-[hsl(var(--secondary-foreground))] md:p-6">
           <div className="flex items-center justify-between"><div><p className="font-mono-fitai text-[10px] uppercase tracking-[.16em] text-[hsl(var(--secondary-foreground)/.55)]">consistência da série</p><h2 className="mt-2 text-2xl font-semibold tracking-[-.05em]">Índice por repetição</h2></div><BarChart3 size={20} className="text-[hsl(var(--primary))]" /></div>
-          <div className="mt-8 flex h-40 items-end gap-2 border-b border-[hsl(var(--secondary-foreground)/.14)] pb-0">{repetitions.map((rep) => <div key={rep.id} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2"><span className="font-mono-fitai text-[10px] text-[hsl(var(--secondary-foreground)/.7)]">{rep.executionIndex}</span><div data-testid={`chart-repetition-${rep.id}`} className="w-full max-w-8 rounded-t-md bg-[hsl(var(--primary))] transition-all" style={{ height: `${Math.max(8, (rep.executionIndex / chartMax) * 100)}%` }} /><span className="font-mono-fitai text-[9px] text-[hsl(var(--secondary-foreground)/.5)]">{rep.id}</span></div>)}</div>
-          <p className="mt-4 text-xs leading-5 text-[hsl(var(--secondary-foreground)/.58)]">{repetitions.length >= 3 && repetitions[repetitions.length - 1].executionIndex < repetitions[0].executionIndex - 4 ? 'Foi observada redução gradual do índice nas últimas repetições.' : 'Acompanhe este gráfico para perceber tendências dentro da série.'}</p>
+          <div className="mt-8 flex h-40 items-end gap-2 border-b border-[hsl(var(--secondary-foreground)/.14)] pb-0">{repetitions.map((rep) => <div key={rep.id} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2"><span className="font-mono-fitai text-[10px] text-[hsl(var(--secondary-foreground)/.7)]">{rep.executionIndex ?? '—'}</span><div data-testid={`chart-repetition-${rep.id}`} className={`w-full max-w-8 rounded-t-md transition-all ${rep.executionIndex === null ? 'bg-white/15' : 'bg-[hsl(var(--primary))]'}`} style={{ height: rep.executionIndex === null ? '4%' : `${Math.max(8, (rep.executionIndex / chartMax) * 100)}%` }} /><span className="font-mono-fitai text-[9px] text-[hsl(var(--secondary-foreground)/.5)]">{rep.id}</span></div>)}</div>
+          <p className="mt-4 text-xs leading-5 text-[hsl(var(--secondary-foreground)/.58)]">{scoredRepetitions.length >= 3 && scoredRepetitions[scoredRepetitions.length - 1].executionIndex! < scoredRepetitions[0].executionIndex! - 4 ? 'Foi observada redução gradual do índice nas últimas repetições avaliáveis.' : 'Repetições com dados insuficientes não recebem nota e não entram na tendência.'}</p>
         </div>
       </section>
 
@@ -135,5 +141,5 @@ function InsightPanel({ title, eyebrow, icon, items, empty, accent = false }: { 
 
 function RepCard({ rep, open, onToggle }: { rep: RepMetric; open: boolean; onToggle: () => void }) {
   const checklist = rep.checklist ?? [];
-  return <article data-testid={`row-repetition-${rep.id}`} className="overflow-hidden rounded-[1.35rem] border border-[hsl(var(--border))] bg-[hsl(var(--card)/.5)]"><button type="button" onClick={onToggle} data-testid={`button-repetition-${rep.id}`} className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[hsl(var(--muted)/.4)]"><span className="font-mono-fitai text-sm text-[hsl(var(--muted-foreground))]">{String(rep.id).padStart(2, '0')}</span><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--primary))]" /><span className="flex-1"><strong className="text-sm">{rep.executionIndex}/100</strong><span className="ml-2 text-xs text-[hsl(var(--muted-foreground))]">{rep.depthLabel}</span></span><span className="text-xs text-[hsl(var(--muted-foreground))]">{rep.note}</span><ChevronRight size={16} className={`text-[hsl(var(--muted-foreground))] transition-transform ${open ? 'rotate-90' : ''}`} /></button>{open && <div className="border-t border-[hsl(var(--border))] px-5 pb-5 pt-4"><div className="grid gap-3 sm:grid-cols-2">{checklist.length ? checklist.map((item) => <div key={item.key} data-testid={`checklist-${rep.id}-${item.key}`} className="rounded-xl bg-[hsl(var(--muted)/.56)] p-3"><div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold">{item.label}</span><span className={`flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-semibold ${statusClass(item.status)}`}><StatusIcon status={item.status} /> {item.status}</span></div><p className="mt-2 text-xs leading-5 text-[hsl(var(--muted-foreground))]">{item.detail}</p>{item.feedback && <p className="mt-2 text-xs leading-5 text-[hsl(var(--foreground))]">{item.feedback}</p>}</div>) : <p className="text-sm text-[hsl(var(--muted-foreground))]">Esta sessão foi criada antes da análise por fases. Faça uma nova sessão para gerar o checklist completo.</p>}</div><div className="mt-4 grid grid-cols-2 gap-3 text-xs text-[hsl(var(--muted-foreground))] sm:grid-cols-4">{Object.entries(rep.scoreBreakdown ?? {}).map(([key, value]) => <div key={key} className="rounded-lg border border-[hsl(var(--border))] p-2"><span className="block uppercase tracking-[.1em]">{key}</span><strong className="mt-1 block text-sm text-[hsl(var(--foreground))]">{value === null ? '—' : value}</strong></div>)}</div>{rep.feedback?.length > 0 && <div className="mt-4 rounded-xl border border-[hsl(var(--accent)/.22)] bg-[hsl(var(--accent)/.06)] p-3"><p className="text-[10px] font-semibold uppercase tracking-[.12em] text-[hsl(var(--accent))]">orientação para a próxima execução</p>{rep.feedback.slice(0, 3).map((message) => <p key={message} className="mt-2 text-xs leading-5">{message}</p>)}</div>}</div>}</article>;
+  return <article data-testid={`row-repetition-${rep.id}`} className="overflow-hidden rounded-[1.35rem] border border-[hsl(var(--border))] bg-[hsl(var(--card)/.5)]"><button type="button" onClick={onToggle} data-testid={`button-repetition-${rep.id}`} className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[hsl(var(--muted)/.4)]"><span className="font-mono-fitai text-sm text-[hsl(var(--muted-foreground))]">{String(rep.id).padStart(2, '0')}</span><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--primary))]" /><span className="flex-1"><strong className="text-sm">{rep.executionIndex === null ? 'Índice não calculado' : `${rep.executionIndex}/100`}</strong><span className="ml-2 text-xs text-[hsl(var(--muted-foreground))]">{rep.depthLabel}</span></span><span className="text-xs text-[hsl(var(--muted-foreground))]">{rep.note}</span><ChevronRight size={16} className={`text-[hsl(var(--muted-foreground))] transition-transform ${open ? 'rotate-90' : ''}`} /></button>{open && <div className="border-t border-[hsl(var(--border))] px-5 pb-5 pt-4"><div className="grid gap-3 sm:grid-cols-2">{checklist.length ? checklist.map((item) => <div key={item.key} data-testid={`checklist-${rep.id}-${item.key}`} className="rounded-xl bg-[hsl(var(--muted)/.56)] p-3"><div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold">{item.label}</span><span className={`flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-semibold ${statusClass(item.status)}`}><StatusIcon status={item.status} /> {item.status}</span></div><p className="mt-2 text-xs leading-5 text-[hsl(var(--muted-foreground))]">{item.detail}</p>{item.feedback && <p className="mt-2 text-xs leading-5 text-[hsl(var(--foreground))]">{item.feedback}</p>}</div>) : <p className="text-sm text-[hsl(var(--muted-foreground))]">Esta sessão foi criada antes da análise por fases. Faça uma nova sessão para gerar o checklist completo.</p>}</div><div className="mt-4 grid grid-cols-2 gap-3 text-xs text-[hsl(var(--muted-foreground))] sm:grid-cols-4">{Object.entries(rep.scoreBreakdown ?? {}).map(([key, value]) => <div key={key} className="rounded-lg border border-[hsl(var(--border))] p-2"><span className="block uppercase tracking-[.1em]">{key}</span><strong className="mt-1 block text-sm text-[hsl(var(--foreground))]">{value === null ? '—' : value}</strong></div>)}</div>{rep.feedback?.length > 0 && <div className="mt-4 rounded-xl border border-[hsl(var(--accent)/.22)] bg-[hsl(var(--accent)/.06)] p-3"><p className="text-[10px] font-semibold uppercase tracking-[.12em] text-[hsl(var(--accent))]">orientação para a próxima execução</p>{rep.feedback.slice(0, 3).map((message) => <p key={message} className="mt-2 text-xs leading-5">{message}</p>)}</div>}</div>}</article>;
 }

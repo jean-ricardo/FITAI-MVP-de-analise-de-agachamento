@@ -18,11 +18,11 @@ export default function Home() {
               Um olhar cuidadoso para o seu agachamento. Feedback prático, direto e processado no seu dispositivo — sem enviar vídeo para lugar nenhum.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Link href="/analyze" data-testid="button-quick-start" className="group flex items-center gap-3 rounded-full bg-[hsl(var(--secondary))] px-5 py-3.5 text-sm font-semibold text-[hsl(var(--secondary-foreground))] transition-transform hover:-translate-y-1">
+              <Link href="/sign-up" data-testid="button-quick-start" className="group flex items-center gap-3 rounded-full bg-[hsl(var(--secondary))] px-5 py-3.5 text-sm font-semibold text-white transition-transform hover:-translate-y-1">
                 <Camera size={17} className="text-[hsl(var(--primary))]" /> Começar análise
                 <ArrowUpRight size={16} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </Link>
-              <span className="font-mono-fitai text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">sem cadastro · 100% local</span>
+              <span className="font-mono-fitai text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">conta gratuita · processamento local</span>
             </div>
           </div>
           <div className="relative mx-auto w-full max-w-md rise-in delay-1">
@@ -72,9 +72,9 @@ export default function Home() {
         <section className="rounded-[1.75rem] bg-[hsl(var(--secondary))] p-6 text-[hsl(var(--secondary-foreground))] md:flex md:items-center md:justify-between md:p-10">
           <div className="flex gap-4">
             <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"><Check size={18} strokeWidth={3} /></div>
-            <div><h2 className="text-xl font-semibold tracking-[-.03em]">Seu vídeo fica no seu aparelho.</h2><p className="mt-1 max-w-lg text-sm leading-6 text-[hsl(var(--secondary-foreground)/.62)]">A análise usa processamento local no navegador. O FITAI não faz upload, não armazena vídeo e não precisa de login.</p></div>
+            <div><h2 className="text-xl font-semibold tracking-[-.03em]">Seu vídeo fica no seu aparelho.</h2><p className="mt-1 max-w-lg text-sm leading-6 text-[hsl(var(--secondary-foreground)/.62)]">É preciso entrar para separar seus relatórios por conta. A análise do vídeo continua local no navegador: o FITAI não envia nem armazena a gravação.</p></div>
           </div>
-          <Link href="/analyze" data-testid="link-privacy-start" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[hsl(var(--primary))] md:mt-0">Ver como funciona <MoveUpRight size={15} /></Link>
+          <Link href="/sign-up" data-testid="link-privacy-start" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[hsl(var(--primary))] md:mt-0">Criar conta para analisar <MoveUpRight size={15} /></Link>
         </section>
 
         <section className="mt-5 grid gap-4 md:grid-cols-3">

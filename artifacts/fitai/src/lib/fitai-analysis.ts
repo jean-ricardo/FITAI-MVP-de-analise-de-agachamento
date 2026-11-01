@@ -72,7 +72,7 @@ export type RepMetric = {
   minKneeAngle: number;
   depthPercent: number;
   depthLabel: DepthLabel;
-  executionIndex: number;
+  executionIndex: number | null;
   durationMs: number;
   note: string;
   scoreBreakdown: ScoreBreakdown;
@@ -113,6 +113,22 @@ export const LANDMARK_CONNECTIONS: [number, number][] = [
 const REQUIRED_SIDE_LANDMARKS = [[11, 23, 25, 27], [12, 24, 26, 28]];
 const HISTORY_KEY = 'fitai:reports';
 const REPORT_KEY = 'fitai:last-report';
+
+function scopedStorageKey(key: string, userId?: string) {
+  return userId ? `${key}:${encodeURIComponent(userId)}` : key;
+}
+
+function migrateLegacyReports(userId?: string) {
+  if (!userId) return;
+  for (const key of [REPORT_KEY, HISTORY_KEY]) {
+    const scopedKey = scopedStorageKey(key, userId);
+    if (localStorage.getItem(scopedKey) !== null) continue;
+    const legacyValue = localStorage.getItem(key);
+    if (legacyValue === null) continue;
+    localStorage.setItem(scopedKey, legacyValue);
+    localStorage.removeItem(key);
+  }
+}
 
 export function landmarkIsVisible(point?: Point, threshold = SQUAT_CONFIG.confidenceThreshold) {
   return Boolean(point && (point.visibility === undefined || point.visibility >= threshold));
@@ -312,8 +328,12 @@ function buildRepMetric(id: number, frames: SquatFrameMetrics[], baselineTrunkAn
   const trunkScore = !enoughFrames ? null : clamp(100 - maxTrunkChange * 3, 0, 100);
   const coordinationScore = syncStatus === 'NÃO AVALIÁVEL' ? null : syncStatus === 'ATENÇÃO' ? 60 : 100;
   const scoreValues = [depthScore, controlScore, trunkScore, coordinationScore].filter((value): value is number => value !== null);
-  const executionIndex = scoreValues.length >= 2 ? Math.round(mean(scoreValues)) : 0;
-  const note = issues[0] ?? (positives[0] ?? 'Movimento acompanhado sem alerta conclusivo');
+  const executionIndex = scoreValues.length >= 2 ? Math.round(mean(scoreValues)) : null;
+  const note = issues[0] ?? (
+    executionIndex === null
+      ? 'Índice não calculado: poucos critérios avaliáveis'
+      : positives[0] ?? 'Movimento acompanhado sem alerta conclusivo'
+  );
   return {
     id,
     minKneeAngle: Math.round(minKneeAngle),
@@ -373,9 +393,174 @@ export function makeRepMetric(id: number, minKneeAngle: number, durationMs: numb
   };
 }
 
+export type TrackerUpdate = {
+  trackingStatus: TrackingStatus;
+  displayStatus: TrackingStatus;
+  pose: Point[] | null;
+  frame: SquatFrameMetrics | null;
+  motionState: MotionState;
+  landmarkCount: number;
+  completedRep: RepMetric | null;
+  repetitions: RepMetric[];
+};
+
+/**
+ * Shared squat state machine for live camera and recorded-video validation.
+ * Incomplete tracking clears only the in-progress repetition; completed reps remain.
+ */
+export class SquatRepTracker {
+  private previousLandmarks: Point[] | null = null;
+  private motionState: MotionState = 'SETUP';
+  private currentRepFrames: SquatFrameMetrics[] = [];
+  private baselineTrunkAngle: number | null = null;
+  private minKneeAngle = 180;
+  private repetitions: RepMetric[] = [];
+
+  reset() {
+    this.repetitions = [];
+    this.resetMotion();
+  }
+
+  resetMotion() {
+    this.previousLandmarks = null;
+    this.motionState = 'SETUP';
+    this.currentRepFrames = [];
+    this.baselineTrunkAngle = null;
+    this.minKneeAngle = 180;
+  }
+
+  getRepetitions() {
+    return [...this.repetitions];
+  }
+
+  processPose(poses: Point[][], timestamp: number): TrackerUpdate {
+    const trackingStatus = getTrackingStatus(poses);
+    const visiblePose = poses.length === 1 ? poses[0] : null;
+    const landmarkCount = visiblePose
+      ? visiblePose.filter((point) => point && landmarkIsVisible(point)).length
+      : 0;
+    const displayStatus =
+      trackingStatus === 'tracking' && visiblePose && !isFullBodyVisible(visiblePose)
+        ? 'incomplete'
+        : trackingStatus;
+
+    if (trackingStatus !== 'tracking' || !visiblePose) {
+      this.resetMotion();
+      return {
+        trackingStatus,
+        displayStatus,
+        pose: visiblePose,
+        frame: null,
+        motionState: this.motionState,
+        landmarkCount,
+        completedRep: null,
+        repetitions: this.getRepetitions(),
+      };
+    }
+
+    const pose = smoothLandmarks(this.previousLandmarks, visiblePose);
+    this.previousLandmarks = pose;
+    const frame = getSquatMetrics(pose);
+    if (!frame) {
+      this.resetMotion();
+      return {
+        trackingStatus,
+        displayStatus,
+        pose: null,
+        frame: null,
+        motionState: this.motionState,
+        landmarkCount,
+        completedRep: null,
+        repetitions: this.getRepetitions(),
+      };
+    }
+
+    frame.timestamp = timestamp;
+    frame.phase = this.motionState;
+    // Use the current raw pose angle for phase transitions. Smoothing remains
+    // valuable for reported metrics, but it can lag enough to miss a fast return
+    // to standing if the athlete immediately begins the next repetition.
+    const stateAngle = getSquatMetrics(visiblePose)?.kneeAngle ?? frame.kneeAngle;
+    if (this.motionState === 'SETUP') {
+      this.baselineTrunkAngle =
+        this.baselineTrunkAngle === null
+          ? frame.trunkAngle
+          : this.baselineTrunkAngle * 0.9 + frame.trunkAngle * 0.1;
+    }
+
+    const repsBeforeFrame = this.repetitions.length;
+    const motion = this.motionState;
+    if (motion === 'SETUP' && stateAngle > 153) {
+      this.motionState = 'EM_PÉ';
+    } else if (motion === 'EM_PÉ' && stateAngle < 150) {
+      frame.phase = 'DESCENDO';
+      this.currentRepFrames = [frame];
+      this.motionState = 'DESCENDO';
+      this.minKneeAngle = frame.kneeAngle;
+    } else if (motion === 'DESCENDO') {
+      frame.phase = 'DESCENDO';
+      this.currentRepFrames.push(frame);
+      this.minKneeAngle = Math.min(this.minKneeAngle, frame.kneeAngle);
+      if (stateAngle <= SQUAT_CONFIG.depthThreshold) {
+        this.motionState = 'EMBAIXO';
+      }
+    } else if (motion === 'EMBAIXO') {
+      frame.phase = 'EMBAIXO';
+      this.currentRepFrames.push(frame);
+      this.minKneeAngle = Math.min(this.minKneeAngle, frame.kneeAngle);
+      if (stateAngle > 120) {
+        this.motionState = 'SUBINDO';
+      }
+    } else if (motion === 'SUBINDO') {
+      frame.phase = 'SUBINDO';
+      this.currentRepFrames.push(frame);
+      if (stateAngle > 153) {
+        frame.phase = 'FINALIZAÇÃO';
+        this.currentRepFrames.push(frame);
+        this.repetitions = [
+          ...this.repetitions,
+          makeRepMetric(
+            this.repetitions.length + 1,
+            this.minKneeAngle,
+            this.currentRepFrames[this.currentRepFrames.length - 1].timestamp -
+              this.currentRepFrames[0].timestamp,
+            this.currentRepFrames,
+            this.baselineTrunkAngle,
+          ),
+        ];
+        this.currentRepFrames = [];
+        this.motionState = 'EM_PÉ';
+        this.minKneeAngle = 180;
+      }
+    } else if (motion === 'EM_PÉ' && stateAngle < 150) {
+      frame.phase = 'DESCENDO';
+      this.currentRepFrames = [frame];
+      this.motionState = 'DESCENDO';
+      this.minKneeAngle = frame.kneeAngle;
+    }
+
+    const currentReps = this.getRepetitions();
+    return {
+      trackingStatus,
+      displayStatus,
+      pose,
+      frame,
+      motionState: this.motionState,
+      landmarkCount,
+      completedRep:
+        this.repetitions.length > repsBeforeFrame
+          ? currentReps[currentReps.length - 1]
+          : null,
+      repetitions: currentReps,
+    };
+  }
+}
+
 export function averageExecutionIndex(repetitions: RepMetric[]) {
-  if (!repetitions.length) return null;
-  return Math.round(mean(repetitions.map((rep) => rep.executionIndex)));
+  const values = repetitions
+    .map((rep) => rep.executionIndex)
+    .filter((value): value is number => value !== null);
+  return values.length ? Math.round(mean(values)) : null;
 }
 
 export function summarizeRepetitions(repetitions: RepMetric[]) {
@@ -434,26 +619,33 @@ export function compareReports(current: FitaiReport, previous: FitaiReport | nul
   };
 }
 
-export function saveReport(report: FitaiReport) {
-  const history = loadHistory();
-  localStorage.setItem(REPORT_KEY, JSON.stringify(report));
-  localStorage.setItem(HISTORY_KEY, JSON.stringify([report, ...history.filter((item) => item.id !== report.id)].slice(0, 20)));
+export function saveReport(report: FitaiReport, userId?: string) {
+  migrateLegacyReports(userId);
+  const history = loadHistory(userId);
+  localStorage.setItem(scopedStorageKey(REPORT_KEY, userId), JSON.stringify(report));
+  localStorage.setItem(scopedStorageKey(HISTORY_KEY, userId), JSON.stringify([report, ...history.filter((item) => item.id !== report.id)].slice(0, 20)));
 }
 
-export function loadReport(): FitaiReport | null {
+export function loadReport(userId?: string): FitaiReport | null {
   try {
-    const value = localStorage.getItem(REPORT_KEY);
+    migrateLegacyReports(userId);
+    const value = localStorage.getItem(scopedStorageKey(REPORT_KEY, userId));
     return value ? (JSON.parse(value) as FitaiReport) : null;
   } catch {
     return null;
   }
 }
 
-export function loadHistory(): FitaiReport[] {
+export function loadHistory(userId?: string): FitaiReport[] {
   try {
-    const value = localStorage.getItem(HISTORY_KEY);
+    migrateLegacyReports(userId);
+    const value = localStorage.getItem(scopedStorageKey(HISTORY_KEY, userId));
     return value ? (JSON.parse(value) as FitaiReport[]) : [];
   } catch {
     return [];
   }
+}
+
+export function clearReport(userId?: string) {
+  localStorage.removeItem(scopedStorageKey(REPORT_KEY, userId));
 }
