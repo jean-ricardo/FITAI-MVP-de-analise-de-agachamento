@@ -1,9 +1,18 @@
 export type MotionState = 'SETUP' | 'EM_PÉ' | 'DESCENDO' | 'EMBAIXO' | 'SUBINDO' | 'FINALIZAÇÃO';
-export type Point = { x: number; y: number; z?: number; visibility?: number };
+export type Point = { x: number; y: number; z?: number; visibility?: number; presence?: number };
 export type ChecklistStatus = 'OK' | 'ATENÇÃO' | 'NÃO AVALIÁVEL';
-export type DepthLabel = 'acima da paralela' | 'aproximadamente paralelo' | 'abaixo da paralela' | 'não avaliável';
+export type DepthLabel = 'flexão estimada baixa' | 'flexão estimada intermediária' | 'flexão estimada alta' | 'não avaliável';
 export type PhaseName = 'SETUP' | 'DESCIDA' | 'PROFUNDIDADE' | 'SUBIDA' | 'FINALIZAÇÃO';
 export type TrackingStatus = 'tracking' | 'bodyNotDetected' | 'multiple' | 'incomplete';
+export type TrackingReliabilityLevel = 'alta' | 'moderada' | 'baixa' | 'insuficiente';
+export type TrackingQuality = {
+  level: TrackingReliabilityLevel;
+  landmarkCoverage: number | null;
+  temporalContinuity: number | null;
+  meanConfidence: number | null;
+  validFrames: number;
+  evaluatedCriteria: number;
+};
 
 export type SquatConfig = {
   confidenceThreshold: number;
@@ -11,10 +20,18 @@ export type SquatConfig = {
   parallelAngle: number;
   trunkAngleThreshold: number;
   hipAscentDifferenceThreshold: number;
-  heelContactThreshold: number;
+  footAngleAttentionDegrees: number;
   velocityThreshold: number;
   minFramesForCriterion: number;
   targetDepth: 'approximatelyParallel' | 'belowParallel';
+  standingAngle: number;
+  descentAngle: number;
+  bottomExitAngle: number;
+  standingStableFrames: number;
+  abortDescentStableFrames: number;
+  completeRepStableFrames: number;
+  frameMargin: number;
+  maxFrameGapMs: number;
 };
 
 export const SQUAT_CONFIG: SquatConfig = {
@@ -23,10 +40,18 @@ export const SQUAT_CONFIG: SquatConfig = {
   parallelAngle: 100,
   trunkAngleThreshold: 15,
   hipAscentDifferenceThreshold: 0.018,
-  heelContactThreshold: 0.035,
+  footAngleAttentionDegrees: 22,
   velocityThreshold: 0.003,
   minFramesForCriterion: 8,
   targetDepth: 'approximatelyParallel',
+  standingAngle: 155,
+  descentAngle: 148,
+  bottomExitAngle: 122,
+  standingStableFrames: 3,
+  abortDescentStableFrames: 3,
+  completeRepStableFrames: 2,
+  frameMargin: 0.035,
+  maxFrameGapMs: 250,
 };
 
 export type SquatFrameMetrics = {
@@ -40,9 +65,11 @@ export type SquatFrameMetrics = {
   kneeX: number;
   ankleX: number;
   trunkAngle: number;
-  heelContact: boolean | null;
+  thighAngleToHorizontal: number | null;
+  footAngleToHorizontal: number | null;
   confidence: number;
-  sideUsed: 'left' | 'right' | 'both';
+  landmarkCoverage: number;
+  sideUsed: 'left' | 'right';
 };
 
 export type ChecklistItem = {
@@ -70,10 +97,11 @@ export type PhaseObservation = {
 export type RepMetric = {
   id: number;
   minKneeAngle: number;
-  depthPercent: number;
+  thighAngleToHorizontal: number | null;
   depthLabel: DepthLabel;
   executionIndex: number | null;
-  durationMs: number;
+  durationMs: number | null;
+  trackingQuality: TrackingQuality;
   note: string;
   scoreBreakdown: ScoreBreakdown;
   checklist: ChecklistItem[];
@@ -90,7 +118,8 @@ export type FitaiReport = {
   durationMs: number;
   repetitions: RepMetric[];
   executionIndex: number | null;
-  reliability: 'reliable' | 'insufficient';
+  reliability: TrackingReliabilityLevel;
+  trackingQuality: TrackingQuality;
   phaseAnalysis: PhaseObservation[];
   priorities: string[];
   positives: string[];
@@ -110,7 +139,16 @@ export const LANDMARK_CONNECTIONS: [number, number][] = [
   [27, 29], [29, 31], [28, 30], [30, 32],
 ];
 
-const REQUIRED_SIDE_LANDMARKS = [[11, 23, 25, 27], [12, 24, 26, 28]];
+export const REQUIRED_SIDE_LANDMARKS = [
+  [11, 13, 15],
+  [12, 14, 16],
+  [23, 25, 27],
+  [24, 26, 28],
+] as const;
+export const SQUAT_SIDE_LANDMARKS = {
+  left: [11, 23, 25, 27],
+  right: [12, 24, 26, 28],
+} as const;
 const HISTORY_KEY = 'fitai:reports';
 const REPORT_KEY = 'fitai:last-report';
 
@@ -130,51 +168,114 @@ function migrateLegacyReports(userId?: string) {
   }
 }
 
+export function isLandmarkUsable(
+  point: Point | undefined,
+  confidenceThreshold = SQUAT_CONFIG.confidenceThreshold,
+) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+  if (
+    point.visibility !== undefined &&
+    (!Number.isFinite(point.visibility) || point.visibility < confidenceThreshold)
+  ) return false;
+  if (
+    point.presence !== undefined &&
+    (!Number.isFinite(point.presence) || point.presence < confidenceThreshold)
+  ) return false;
+  return true;
+}
+
 export function landmarkIsVisible(point?: Point, threshold = SQUAT_CONFIG.confidenceThreshold) {
-  return Boolean(point && (point.visibility === undefined || point.visibility >= threshold));
+  return isLandmarkUsable(point, threshold);
 }
 
 export function landmarkConfidence(point?: Point) {
-  return point?.visibility ?? 1;
+  if (!point) return 0;
+  const values = [point.visibility, point.presence]
+    .filter((value): value is number => value !== undefined && Number.isFinite(value));
+  return values.length ? Math.min(...values) : 0;
+}
+
+export function hasCompleteSquatSide(pose: Point[]) {
+  return Object.values(SQUAT_SIDE_LANDMARKS).some((landmarks) =>
+    landmarks.every((index) => isLandmarkUsable(pose[index])),
+  );
 }
 
 export function getTrackingStatus(poses: Point[][]): TrackingStatus {
   if (!poses.length) return 'bodyNotDetected';
   if (poses.length > 1) return 'multiple';
-  const pose = poses[0];
-  const sideReady = REQUIRED_SIDE_LANDMARKS.some((side) => side.every((index) => landmarkIsVisible(pose[index])));
-  return sideReady ? 'tracking' : 'incomplete';
+  return hasCompleteSquatSide(poses[0]) ? 'tracking' : 'incomplete';
+}
+
+function sideIsInFrame(pose: Point[], side: 'left' | 'right') {
+  const essential = SQUAT_SIDE_LANDMARKS[side].map((index) => pose[index]);
+  if (!essential.every((point) => isLandmarkUsable(point))) return false;
+
+  const head = [pose[0], pose[7], pose[8]]
+    .filter((point) => isLandmarkUsable(point))
+    .sort((a, b) => landmarkConfidence(b) - landmarkConfidence(a))[0];
+  const footIndexes = side === 'left' ? [29, 31] : [30, 32];
+  const footPoints = footIndexes
+    .map((index) => pose[index])
+    .filter((point) => isLandmarkUsable(point));
+  if (!head || !footPoints.length) return false;
+
+  const visiblePoints = [...essential, head, ...footPoints];
+  const margin = SQUAT_CONFIG.frameMargin;
+  if (visiblePoints.some((point) => point.x < margin || point.x > 1 - margin)) return false;
+  const headY = Math.min(head.y, ...essential.map((point) => point.y));
+  const footY = Math.max(...footPoints.map((point) => point.y));
+  return headY >= margin && footY <= 1 - margin && footY - headY >= 0.55;
 }
 
 export function isFullBodyVisible(pose: Point[]) {
-  const visible = pose
-    .filter((point, index) => index >= 11 && point && landmarkIsVisible(point))
-    .map((point) => point.y);
-  return visible.length >= 6 && Math.min(...visible) <= 0.14 && Math.max(...visible) >= 0.84;
+  return (Object.keys(SQUAT_SIDE_LANDMARKS) as Array<'left' | 'right'>)
+    .some((side) => sideIsInFrame(pose, side));
 }
 
 export function smoothLandmarks(previous: Point[] | null, next: Point[], alpha = 0.38) {
-  if (!previous || previous.length !== next.length) return next.map((point) => ({ ...point }));
-  return next.map((point, index) => ({
-    ...point,
-    x: previous[index].x + (point.x - previous[index].x) * alpha,
-    y: previous[index].y + (point.y - previous[index].y) * alpha,
-    z: (previous[index].z ?? 0) + ((point.z ?? 0) - (previous[index].z ?? 0)) * alpha,
-    visibility: point.visibility,
-  }));
+  if (!previous || previous.length !== next.length) {
+    return next.map((point) => point ? { ...point } : point);
+  }
+  return next.map((point, index) => {
+    const prior = previous[index];
+    if (!point || !prior || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      return point ? { ...point } : point;
+    }
+    return {
+      ...point,
+      x: prior.x + (point.x - prior.x) * alpha,
+      y: prior.y + (point.y - prior.y) * alpha,
+      z: (prior.z ?? 0) + ((point.z ?? 0) - (prior.z ?? 0)) * alpha,
+      visibility: point.visibility,
+      presence: point.presence,
+    };
+  });
 }
 
-export function angleAtVertex(a: Point, b: Point, c: Point) {
+export function angleAtVertex(a: Point, b: Point, c: Point): number | null {
+  if (![a, b, c].every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))) return null;
   const ab = { x: a.x - b.x, y: a.y - b.y };
   const cb = { x: c.x - b.x, y: c.y - b.y };
   const dot = ab.x * cb.x + ab.y * cb.y;
   const magnitude = Math.sqrt(ab.x ** 2 + ab.y ** 2) * Math.sqrt(cb.x ** 2 + cb.y ** 2);
-  if (!magnitude) return 180;
+  if (!Number.isFinite(magnitude) || magnitude < 1e-6) return null;
   return Math.round((Math.acos(Math.max(-1, Math.min(1, dot / magnitude))) * 180) / Math.PI);
 }
 
+export function angleBetweenSegmentAndHorizontal(a: Point, b: Point): number | null {
+  if (![a, b].every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))) return null;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (Math.hypot(dx, dy) < 1e-6) return null;
+  return Math.round((Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI);
+}
+
 function trunkAngle(shoulder: Point, hip: Point) {
-  return Math.round((Math.atan2(Math.abs(shoulder.x - hip.x), Math.abs(shoulder.y - hip.y)) * 180) / Math.PI);
+  const dx = shoulder.x - hip.x;
+  const dy = shoulder.y - hip.y;
+  if (Math.hypot(dx, dy) < 1e-6) return null;
+  return Math.round((Math.atan2(Math.abs(dx), Math.abs(dy)) * 180) / Math.PI);
 }
 
 type SideMetrics = {
@@ -187,7 +288,8 @@ type SideMetrics = {
   kneeX: number;
   ankleX: number;
   trunkAngle: number;
-  heelContact: boolean | null;
+  thighAngleToHorizontal: number | null;
+  footAngleToHorizontal: number | null;
   confidence: number;
 };
 
@@ -199,21 +301,25 @@ function sideMetrics(pose: Point[], side: 'left' | 'right'): SideMetrics | null 
   const hip = pose[indexes.hip];
   const knee = pose[indexes.knee];
   const ankle = pose[indexes.ankle];
-  if (![shoulder, hip, knee, ankle].every((point) => landmarkIsVisible(point))) return null;
+  if (![shoulder, hip, knee, ankle].every((point) => isLandmarkUsable(point))) return null;
+  const kneeAngle = angleAtVertex(hip, knee, ankle);
+  const trunk = trunkAngle(shoulder, hip);
+  if (kneeAngle === null || trunk === null) return null;
   const heel = pose[indexes.heel];
   const toe = pose[indexes.toe];
-  const footIsVisible = landmarkIsVisible(heel) && landmarkIsVisible(toe);
+  const footIsVisible = isLandmarkUsable(heel) && isLandmarkUsable(toe);
   return {
     side,
-    kneeAngle: angleAtVertex(hip, knee, ankle),
+    kneeAngle,
     hipY: hip.y,
     hipX: hip.x,
     shoulderY: shoulder.y,
     shoulderX: shoulder.x,
     kneeX: knee.x,
     ankleX: ankle.x,
-    trunkAngle: trunkAngle(shoulder, hip),
-    heelContact: footIsVisible ? heel.y >= toe.y - SQUAT_CONFIG.heelContactThreshold : null,
+    trunkAngle: trunk,
+    thighAngleToHorizontal: angleBetweenSegmentAndHorizontal(hip, knee),
+    footAngleToHorizontal: footIsVisible ? angleBetweenSegmentAndHorizontal(heel, toe) : null,
     confidence: [shoulder, hip, knee, ankle].reduce((sum, point) => sum + landmarkConfidence(point), 0) / 4,
   };
 }
@@ -225,23 +331,26 @@ function mean(values: number[]) {
 export function getSquatMetrics(pose: Point[]): SquatFrameMetrics | null {
   const left = sideMetrics(pose, 'left');
   const right = sideMetrics(pose, 'right');
-  if (!left && !right) return null;
-  const sides = [left, right].filter((side): side is SideMetrics => Boolean(side));
-  const footStates = sides.map((side) => side.heelContact).filter((value): value is boolean => value !== null);
+  const side = [left, right]
+    .filter((candidate): candidate is SideMetrics => Boolean(candidate))
+    .sort((a, b) => b.confidence - a.confidence)[0];
+  if (!side) return null;
   return {
     timestamp: 0,
     phase: 'SETUP',
-    kneeAngle: mean(sides.map((side) => side.kneeAngle)),
-    hipY: mean(sides.map((side) => side.hipY)),
-    hipX: mean(sides.map((side) => side.hipX)),
-    shoulderY: mean(sides.map((side) => side.shoulderY)),
-    shoulderX: mean(sides.map((side) => side.shoulderX)),
-    kneeX: mean(sides.map((side) => side.kneeX)),
-    ankleX: mean(sides.map((side) => side.ankleX)),
-    trunkAngle: mean(sides.map((side) => side.trunkAngle)),
-    heelContact: footStates.length ? footStates.every(Boolean) : null,
-    confidence: mean(sides.map((side) => side.confidence)),
-    sideUsed: sides.length === 2 ? 'both' : sides[0].side,
+    kneeAngle: side.kneeAngle,
+    hipY: side.hipY,
+    hipX: side.hipX,
+    shoulderY: side.shoulderY,
+    shoulderX: side.shoulderX,
+    kneeX: side.kneeX,
+    ankleX: side.ankleX,
+    trunkAngle: side.trunkAngle,
+    thighAngleToHorizontal: side.thighAngleToHorizontal,
+    footAngleToHorizontal: side.footAngleToHorizontal,
+    confidence: side.confidence,
+    landmarkCoverage: 1,
+    sideUsed: side.side,
   };
 }
 
@@ -249,16 +358,24 @@ export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function validDuration(frames: SquatFrameMetrics[]) {
+  if (frames.length < 2) return null;
+  const timestamps = frames.map((frame) => frame.timestamp);
+  if (timestamps.some((timestamp) => !Number.isFinite(timestamp))) return null;
+  if (timestamps.some((timestamp, index) => index > 0 && timestamp <= timestamps[index - 1])) return null;
+  return timestamps[timestamps.length - 1] - timestamps[0];
+}
+
 function phaseDuration(frames: SquatFrameMetrics[], phases: MotionState[]) {
   const phaseFrames = frames.filter((frame) => phases.includes(frame.phase));
-  return phaseFrames.length >= 2 ? phaseFrames[phaseFrames.length - 1].timestamp - phaseFrames[0].timestamp : null;
+  return validDuration(phaseFrames);
 }
 
 function depthLabel(minKneeAngle: number, frameCount: number): DepthLabel {
   if (frameCount < SQUAT_CONFIG.minFramesForCriterion) return 'não avaliável';
-  if (minKneeAngle > SQUAT_CONFIG.depthThreshold) return 'acima da paralela';
-  if (minKneeAngle > SQUAT_CONFIG.parallelAngle) return 'aproximadamente paralelo';
-  return 'abaixo da paralela';
+  if (minKneeAngle > SQUAT_CONFIG.depthThreshold) return 'flexão estimada baixa';
+  if (minKneeAngle > SQUAT_CONFIG.parallelAngle) return 'flexão estimada intermediária';
+  return 'flexão estimada alta';
 }
 
 function checklistItem(key: string, label: string, status: ChecklistStatus, detail: string, feedback?: string): ChecklistItem {
@@ -269,66 +386,166 @@ function statusDetail(status: ChecklistStatus, ok: string, attention: string, un
   return status === 'OK' ? ok : status === 'ATENÇÃO' ? attention : unavailable;
 }
 
+function trackingQualityForFrames(frames: SquatFrameMetrics[], evaluatedCriteria: number): TrackingQuality {
+  const validFrames = frames.filter((frame) =>
+    Number.isFinite(frame.timestamp) &&
+    Number.isFinite(frame.confidence) &&
+    Number.isFinite(frame.landmarkCoverage),
+  );
+  const meanConfidence = validFrames.length
+    ? mean(validFrames.map((frame) => clamp(frame.confidence, 0, 1)))
+    : null;
+  const landmarkCoverage = validFrames.length
+    ? mean(validFrames.map((frame) => clamp(frame.landmarkCoverage, 0, 1)))
+    : null;
+  const intervals = validFrames.slice(1).map((frame, index) => frame.timestamp - validFrames[index].timestamp);
+  const temporalContinuity = intervals.length && intervals.every((interval) => interval > 0)
+    ? intervals.filter((interval) => interval <= SQUAT_CONFIG.maxFrameGapMs).length / intervals.length
+    : null;
+  const level: TrackingReliabilityLevel =
+    validFrames.length < SQUAT_CONFIG.minFramesForCriterion ||
+    meanConfidence === null ||
+    landmarkCoverage === null ||
+    temporalContinuity === null
+      ? 'insuficiente'
+      : landmarkCoverage >= 0.95 && temporalContinuity >= 0.9 && meanConfidence >= 0.75 && evaluatedCriteria >= 2
+        ? 'alta'
+        : landmarkCoverage >= 0.8 && temporalContinuity >= 0.7 && meanConfidence >= 0.55
+          ? 'moderada'
+          : 'baixa';
+  return {
+    level,
+    landmarkCoverage,
+    temporalContinuity,
+    meanConfidence,
+    validFrames: validFrames.length,
+    evaluatedCriteria,
+  };
+}
+
+export function summarizeTrackingQuality(repetitions: RepMetric[]): TrackingQuality {
+  const qualities = repetitions.map((rep) => rep.trackingQuality).filter(Boolean);
+  if (!qualities.length) {
+    return {
+      level: 'insuficiente',
+      landmarkCoverage: null,
+      temporalContinuity: null,
+      meanConfidence: null,
+      validFrames: 0,
+      evaluatedCriteria: 0,
+    };
+  }
+  const averageAvailable = (values: Array<number | null>) => {
+    const valid = values.filter((value): value is number => value !== null && Number.isFinite(value));
+    return valid.length ? mean(valid) : null;
+  };
+  const validFrames = qualities.reduce((sum, quality) => sum + quality.validFrames, 0);
+  const evaluatedCriteria = qualities.reduce((sum, quality) => sum + quality.evaluatedCriteria, 0);
+  const landmarkCoverage = averageAvailable(qualities.map((quality) => quality.landmarkCoverage));
+  const temporalContinuity = averageAvailable(qualities.map((quality) => quality.temporalContinuity));
+  const meanConfidence = averageAvailable(qualities.map((quality) => quality.meanConfidence));
+  const level: TrackingReliabilityLevel =
+    validFrames < SQUAT_CONFIG.minFramesForCriterion ||
+    landmarkCoverage === null ||
+    temporalContinuity === null ||
+    meanConfidence === null
+      ? 'insuficiente'
+      : landmarkCoverage >= 0.95 && temporalContinuity >= 0.9 && meanConfidence >= 0.75 && evaluatedCriteria >= 2
+        ? 'alta'
+        : landmarkCoverage >= 0.8 && temporalContinuity >= 0.7 && meanConfidence >= 0.55
+          ? 'moderada'
+          : 'baixa';
+  return { level, landmarkCoverage, temporalContinuity, meanConfidence, validFrames, evaluatedCriteria };
+}
+
 function buildRepMetric(id: number, frames: SquatFrameMetrics[], baselineTrunkAngle: number | null): RepMetric {
   const minKneeAngle = Math.min(...frames.map((frame) => frame.kneeAngle));
-  const durationMs = frames.length > 1 ? frames[frames.length - 1].timestamp - frames[0].timestamp : 0;
-  const depthPercent = Math.round(clamp(((170 - minKneeAngle) / 80) * 100, 0, 100));
-  const label = depthLabel(minKneeAngle, frames.length);
-  const trunkReference = baselineTrunkAngle ?? frames[0]?.trunkAngle ?? 0;
-  const maxTrunkChange = Math.max(...frames.map((frame) => Math.abs(frame.trunkAngle - trunkReference)));
+  const durationMs = validDuration(frames);
+  const enoughFrames = frames.length >= SQUAT_CONFIG.minFramesForCriterion && durationMs !== null;
+  const label = depthLabel(minKneeAngle, enoughFrames ? frames.length : 0);
+  const bottomFrame = [...frames].sort((a, b) => a.kneeAngle - b.kneeAngle)[0];
+  const trunkReference = baselineTrunkAngle ?? frames[0]?.trunkAngle ?? null;
+  const trunkReferenceValue = trunkReference ?? 0;
+  const maxTrunkChange = Math.max(...frames.map((frame) => Math.abs(frame.trunkAngle - trunkReferenceValue)));
   const ascent = frames.filter((frame) => frame.phase === 'SUBINDO' || frame.phase === 'FINALIZAÇÃO');
-  const enoughFrames = frames.length >= SQUAT_CONFIG.minFramesForCriterion;
+  const descent = frames.filter((frame) => frame.phase === 'DESCENDO');
   const descentDuration = phaseDuration(frames, ['DESCENDO']);
   const ascentDuration = phaseDuration(frames, ['SUBINDO', 'FINALIZAÇÃO']);
-  const heelFrames = frames.map((frame) => frame.heelContact).filter((value): value is boolean => value !== null);
-  const heelStatus: ChecklistStatus = heelFrames.length < SQUAT_CONFIG.minFramesForCriterion ? 'NÃO AVALIÁVEL' : heelFrames.every(Boolean) ? 'OK' : 'ATENÇÃO';
-  const depthStatus: ChecklistStatus = label === 'não avaliável' ? 'NÃO AVALIÁVEL' : label === 'acima da paralela' ? 'ATENÇÃO' : 'OK';
-  const controlStatus: ChecklistStatus = descentDuration === null ? 'NÃO AVALIÁVEL' : descentDuration >= 260 ? 'OK' : 'ATENÇÃO';
-  const trunkStatus: ChecklistStatus = !enoughFrames ? 'NÃO AVALIÁVEL' : maxTrunkChange > SQUAT_CONFIG.trunkAngleThreshold ? 'ATENÇÃO' : 'OK';
+  const footFrames = frames.filter((frame) => frame.footAngleToHorizontal !== null);
+  const maxFootAngle = footFrames.length
+    ? Math.max(...footFrames.map((frame) => frame.footAngleToHorizontal as number))
+    : null;
+  const footStatus: ChecklistStatus = footFrames.length < SQUAT_CONFIG.minFramesForCriterion || maxFootAngle === null
+    ? 'NÃO AVALIÁVEL'
+    : maxFootAngle > SQUAT_CONFIG.footAngleAttentionDegrees
+      ? 'ATENÇÃO'
+      : 'OK';
+  const targetAngle = SQUAT_CONFIG.targetDepth === 'approximatelyParallel'
+    ? SQUAT_CONFIG.depthThreshold
+    : SQUAT_CONFIG.parallelAngle;
+  const depthStatus: ChecklistStatus = label === 'não avaliável'
+    ? 'NÃO AVALIÁVEL'
+    : minKneeAngle > targetAngle
+      ? 'ATENÇÃO'
+      : 'OK';
+  const descentReversals = descent.slice(1).filter((frame, index) =>
+    frame.hipY < descent[index].hipY - SQUAT_CONFIG.velocityThreshold,
+  ).length;
+  const controlEvaluable = descent.length >= 4 && descentDuration !== null && enoughFrames;
+  const controlStatus: ChecklistStatus = !controlEvaluable
+    ? 'NÃO AVALIÁVEL'
+    : descentReversals >= 2
+      ? 'ATENÇÃO'
+      : 'OK';
+  const trunkStatus: ChecklistStatus = !enoughFrames || trunkReference === null
+    ? 'NÃO AVALIÁVEL'
+    : maxTrunkChange > SQUAT_CONFIG.trunkAngleThreshold
+      ? 'ATENÇÃO'
+      : 'OK';
   const hipStarts = ascent.findIndex((frame, index) => index > 0 && frame.hipY < ascent[Math.max(0, index - 1)].hipY - SQUAT_CONFIG.hipAscentDifferenceThreshold);
   const shoulderStarts = ascent.findIndex((frame, index) => index > 0 && frame.shoulderY < ascent[Math.max(0, index - 1)].shoulderY - SQUAT_CONFIG.hipAscentDifferenceThreshold);
   const syncStatus: ChecklistStatus = !ascent.length || hipStarts < 0 || shoulderStarts < 0 ? 'NÃO AVALIÁVEL' : hipStarts - shoulderStarts > 2 ? 'ATENÇÃO' : 'OK';
   const finalFrame = frames[frames.length - 1];
-  const finishStatus: ChecklistStatus = !finalFrame || frames.length < SQUAT_CONFIG.minFramesForCriterion ? 'NÃO AVALIÁVEL' : finalFrame.trunkAngle - trunkReference > SQUAT_CONFIG.trunkAngleThreshold ? 'ATENÇÃO' : 'OK';
-  const pelvicChange = enoughFrames && frames.length >= 12 && Math.abs(frames[Math.floor(frames.length * 0.55)].trunkAngle - frames[Math.floor(frames.length * 0.42)].trunkAngle) > SQUAT_CONFIG.trunkAngleThreshold;
+  const finishStatus: ChecklistStatus = !finalFrame || !enoughFrames || trunkReference === null
+    ? 'NÃO AVALIÁVEL'
+    : Math.abs(finalFrame.trunkAngle - trunkReference) > SQUAT_CONFIG.trunkAngleThreshold
+      ? 'ATENÇÃO'
+      : 'OK';
   const issues: string[] = [];
   const feedback: string[] = [];
   const positives: string[] = [];
-  if (heelStatus === 'ATENÇÃO') {
-    issues.push('Perda de contato do calcanhar');
-    feedback.push('Procure manter o apoio do pé estável durante o movimento. Se necessário, reduza a amplitude ou ajuste sua base.');
+  if (footStatus === 'ATENÇÃO') {
+    issues.push('Inclinação visual do pé variou acima do limite estimado');
+    feedback.push('A imagem 2D mostrou variação na orientação do pé. Confira o posicionamento diretamente; isto não confirma contato ou perda de apoio no solo.');
   }
   if (depthStatus === 'ATENÇÃO') {
-    issues.push('Amplitude abaixo da meta');
-    feedback.push('Na próxima série, tente manter uma amplitude consistente e controlada, respeitando a meta configurada.');
+    issues.push('Flexão estimada do joelho abaixo da faixa configurada');
+    feedback.push('A estimativa angular do joelho ficou acima da faixa configurada. A câmera 2D não comprova a altura da coxa nem uma profundidade física.');
   }
   if (trunkStatus === 'ATENÇÃO') {
-    issues.push('Alteração significativa da inclinação do tronco');
-    feedback.push('Foi observada uma mudança significativa na inclinação do tronco. Tente manter maior controle da posição do tronco.');
+    issues.push('Mudança observada na inclinação 2D do tronco');
+    feedback.push('A orientação 2D entre ombro e quadril variou em relação ao início. Isso não mede neutralidade da coluna vertebral.');
   }
   if (syncStatus === 'ATENÇÃO') {
-    issues.push('Possível perda de sincronia na subida');
-    feedback.push('Na subida, o quadril parece iniciar antes do tronco. Tente subir mantendo os dois mais coordenados.');
+    issues.push('Início da subida pareceu dessincronizado em 2D');
+    feedback.push('A trajetória estimada de ombro e quadril começou em momentos diferentes. Revise o vídeo; a leitura não é uma avaliação clínica.');
   }
   if (finishStatus === 'ATENÇÃO') {
-    issues.push('Movimento exagerado do tronco na finalização');
-    feedback.push('Evite projetar excessivamente o tronco para trás ao finalizar.');
+    issues.push('Inclinação do tronco no final diferiu do início');
+    feedback.push('A posição 2D de ombro e quadril no final diferiu do começo. Isso não identifica movimento pélvico ou neutralidade da coluna.');
   }
-  if (pelvicChange) {
-    issues.push('Possível alteração da posição pélvica no fundo do movimento');
-    feedback.push('A posição pélvica não foi estável em todos os frames do fundo. Reduza a amplitude se não conseguir manter controle.');
-  }
-  if (heelStatus === 'OK') positives.push('Apoio dos pés permaneceu estável.');
-  if (depthStatus === 'OK') positives.push('Amplitude atingiu a meta configurada.');
-  if (trunkStatus === 'OK') positives.push('Inclinação do tronco permaneceu estável.');
-  if (syncStatus === 'OK') positives.push('Quadril e tronco subiram de maneira coordenada.');
-  if (controlStatus === 'OK') positives.push('Descida realizada com controle.');
-  const depthScore = label === 'não avaliável' ? null : clamp(100 - Math.abs(minKneeAngle - SQUAT_CONFIG.parallelAngle) * 2, 0, 100);
-  const controlScore = descentDuration === null ? null : clamp(100 - Math.abs(700 - descentDuration) / 8, 0, 100);
-  const trunkScore = !enoughFrames ? null : clamp(100 - maxTrunkChange * 3, 0, 100);
+  if (footStatus === 'OK') positives.push('A orientação visual do pé variou pouco nos frames avaliáveis.');
+  if (depthStatus === 'OK') positives.push('A estimativa angular do joelho atingiu a faixa configurada.');
+  if (trunkStatus === 'OK') positives.push('A inclinação 2D de ombro-quadril variou pouco nesta repetição.');
+  if (syncStatus === 'OK') positives.push('O início da subida de ombro e quadril foi semelhante na estimativa 2D.');
+  if (controlStatus === 'OK') positives.push('Poucas reversões verticais foram observadas na trajetória 2D da descida.');
+  const depthScore = label === 'não avaliável' ? null : clamp(100 - Math.abs(minKneeAngle - targetAngle) * 2, 0, 100);
+  const controlScore = !controlEvaluable ? null : clamp(100 - descentReversals * 35, 0, 100);
+  const trunkScore = !enoughFrames || trunkReference === null ? null : clamp(100 - maxTrunkChange * 3, 0, 100);
   const coordinationScore = syncStatus === 'NÃO AVALIÁVEL' ? null : syncStatus === 'ATENÇÃO' ? 60 : 100;
   const scoreValues = [depthScore, controlScore, trunkScore, coordinationScore].filter((value): value is number => value !== null);
   const executionIndex = scoreValues.length >= 2 ? Math.round(mean(scoreValues)) : null;
+  const trackingQuality = trackingQualityForFrames(frames, scoreValues.length);
   const note = issues[0] ?? (
     executionIndex === null
       ? 'Índice não calculado: poucos critérios avaliáveis'
@@ -337,10 +554,11 @@ function buildRepMetric(id: number, frames: SquatFrameMetrics[], baselineTrunkAn
   return {
     id,
     minKneeAngle: Math.round(minKneeAngle),
-    depthPercent,
+    thighAngleToHorizontal: bottomFrame?.thighAngleToHorizontal ?? null,
     depthLabel: label,
     executionIndex,
     durationMs,
+    trackingQuality,
     note,
     scoreBreakdown: {
       depth: depthScore === null ? null : Math.round(depthScore),
@@ -349,19 +567,19 @@ function buildRepMetric(id: number, frames: SquatFrameMetrics[], baselineTrunkAn
       coordination: coordinationScore,
     },
     checklist: [
-      checklistItem('support', 'Apoio do pé', heelStatus, statusDetail(heelStatus, 'Calcanhar e ponta do pé permaneceram estáveis.', 'Foi observado afastamento do calcanhar do solo.', 'Calcanhar e ponta do pé não ficaram visíveis o suficiente.'), feedback.find((message) => message.includes('apoio'))),
-      checklistItem('descent', 'Controle da descida', controlStatus, statusDetail(controlStatus, 'A descida teve duração suficiente para ser considerada controlada.', 'A descida foi muito rápida para uma leitura segura.', 'Não houve frames suficientes para estimar o controle.'), controlStatus === 'ATENÇÃO' ? 'Faça a descida de maneira mais controlada.' : undefined),
-      checklistItem('depth', 'Amplitude', depthStatus, statusDetail(depthStatus, `Resultado: ${label}.`, 'Amplitude abaixo da meta configurada.', 'Não foi possível estimar a profundidade com confiança.'), feedback.find((message) => message.includes('amplitude'))),
-      checklistItem('trunk', 'Estabilidade do tronco', trunkStatus, statusDetail(trunkStatus, 'A inclinação variou pouco em relação ao seu próprio setup.', 'Alteração significativa na inclinação durante a descida.', 'Não houve visibilidade suficiente do ombro e quadril.'), feedback.find((message) => message.includes('tronco'))),
-      checklistItem('rise', 'Controle da subida', syncStatus, statusDetail(syncStatus, 'Quadril e tronco iniciaram a subida de maneira coordenada.', 'Foi observado que o quadril iniciou a subida antes do tronco.', 'Não foi possível comparar o início da subida.'), feedback.find((message) => message.includes('quadril'))),
-      checklistItem('finish', 'Finalização', finishStatus, statusDetail(finishStatus, 'Retorno ao topo sem projeção excessiva do tronco.', 'Movimento exagerado do tronco ao finalizar.', 'Topo não ficou visível o suficiente.'), feedback.find((message) => message.includes('projetar'))),
+      checklistItem('support', 'Orientação visual do pé', footStatus, statusDetail(footStatus, `Inclinação estimada calcanhar-ponta de até ${Math.round(maxFootAngle ?? 0)}° em 2D; não confirma apoio no solo.`, `Foi estimada inclinação calcanhar-ponta acima de ${SQUAT_CONFIG.footAngleAttentionDegrees}° em 2D; não confirma perda de contato.`, 'Calcanhar e ponta não foram visíveis em frames suficientes.'), feedback.find((message) => message.includes('orientação 2D'))),
+      checklistItem('descent', 'Regularidade visual da descida', controlStatus, statusDetail(controlStatus, 'Poucas reversões verticais acima do limite de ruído foram observadas; isto não prova qualidade técnica.', 'Foram observadas reversões verticais na trajetória 2D; revise o vídeo.', 'Não houve timestamps monotônicos ou frames suficientes para estimar a trajetória.'), controlStatus === 'ATENÇÃO' ? 'Confira a trajetória no vídeo; não é uma conclusão clínica.' : undefined),
+      checklistItem('depth', 'Flexão angular estimada', depthStatus, statusDetail(depthStatus, `Joelho: ${label}. Estimativa 2D; não confirma paralelismo da coxa.`, `Joelho: ${label}. A faixa configurada não foi atingida.`, 'Não houve frames suficientes para estimar o ângulo do joelho.'), feedback.find((message) => message.includes('estimativa angular'))),
+      checklistItem('trunk', 'Inclinação 2D do tronco', trunkStatus, statusDetail(trunkStatus, 'A orientação 2D entre ombro e quadril variou pouco em relação ao início; não mede neutralidade da coluna.', 'A inclinação 2D entre ombro e quadril mudou acima do limite configurado.', 'Não houve frames suficientes para comparar ombro e quadril.'), feedback.find((message) => message.includes('orientação 2D'))),
+      checklistItem('rise', 'Início da subida (estimativa 2D)', syncStatus, statusDetail(syncStatus, 'O início observado para ombro e quadril foi semelhante.', 'Os pontos começaram a subir em momentos diferentes; revise o vídeo.', 'Não foi possível comparar os inícios de movimento.'), feedback.find((message) => message.includes('trajetória estimada'))),
+      checklistItem('finish', 'Posição 2D no final', finishStatus, statusDetail(finishStatus, 'A inclinação de ombro-quadril no final ficou próxima à referência inicial.', 'A inclinação de ombro-quadril no final diferiu da referência inicial.', 'Não houve dados suficientes da posição final.'), feedback.find((message) => message.includes('posição 2D'))),
     ],
     phaseAnalysis: [
       { phase: 'SETUP', status: baselineTrunkAngle === null ? 'NÃO AVALIÁVEL' : 'OK', durationMs: null, detail: baselineTrunkAngle === null ? 'Não foi possível formar um baseline confiável.' : 'Baseline do tronco registrado.' },
-      { phase: 'DESCIDA', status: descentDuration === null ? 'NÃO AVALIÁVEL' : controlStatus, durationMs: descentDuration, detail: descentDuration === null ? 'Trajetória descendente insuficiente para avaliação.' : 'Quadril e joelhos acompanhados ao longo da descida.' },
-      { phase: 'PROFUNDIDADE', status: depthStatus, durationMs: enoughFrames ? frames[Math.floor(frames.length * 0.2)]?.timestamp ?? null : null, detail: label === 'não avaliável' ? 'Ponto de maior flexão não pôde ser avaliado.' : `Profundidade ${label}.` },
+      { phase: 'DESCIDA', status: controlStatus, durationMs: descentDuration, detail: descentDuration === null ? 'Não há timestamps monotônicos e frames suficientes para medir duração.' : `Duração observada: ${Math.round(descentDuration)} ms. A regularidade é apenas uma estimativa de trajetória 2D.` },
+      { phase: 'PROFUNDIDADE', status: depthStatus, durationMs: phaseDuration(frames, ['EMBAIXO']), detail: label === 'não avaliável' ? 'O ângulo do joelho não pôde ser estimado com frames suficientes.' : `Flexão estimada do joelho: ${label}; a orientação da coxa é ${bottomFrame?.thighAngleToHorizontal === null || bottomFrame?.thighAngleToHorizontal === undefined ? 'não avaliável' : `${Math.round(bottomFrame.thighAngleToHorizontal)}° em relação à horizontal`}. Isto não confirma paralelismo físico.` },
       { phase: 'SUBIDA', status: ascentDuration === null ? 'NÃO AVALIÁVEL' : syncStatus, durationMs: ascentDuration, detail: syncStatus === 'ATENÇÃO' ? 'Quadril iniciou antes do tronco.' : syncStatus === 'OK' ? 'Subida coordenada.' : 'Não houve dados suficientes para comparar.' },
-      { phase: 'FINALIZAÇÃO', status: finishStatus, durationMs: null, detail: finishStatus === 'ATENÇÃO' ? 'Alteração observada ao retornar ao topo.' : finishStatus === 'OK' ? 'Retorno controlado à posição inicial.' : 'Topo não ficou visível o suficiente.' },
+      { phase: 'FINALIZAÇÃO', status: finishStatus, durationMs: phaseDuration(frames, ['FINALIZAÇÃO']), detail: finishStatus === 'ATENÇÃO' ? 'Inclinação 2D de ombro-quadril no final diferiu do início.' : finishStatus === 'OK' ? 'Inclinação 2D de ombro-quadril no final ficou próxima à referência inicial.' : 'Posição final não foi avaliável.' },
     ],
     issues,
     positives,
@@ -372,18 +590,17 @@ function buildRepMetric(id: number, frames: SquatFrameMetrics[], baselineTrunkAn
 
 export function makeRepMetric(id: number, minKneeAngle: number, durationMs: number, frames: SquatFrameMetrics[] = [], baselineTrunkAngle: number | null = null): RepMetric {
   if (frames.length >= 2) return buildRepMetric(id, frames, baselineTrunkAngle);
-  const depthPercent = Math.round(clamp(((170 - minKneeAngle) / 80) * 100, 0, 100));
-  const depthLabel: DepthLabel = minKneeAngle > SQUAT_CONFIG.depthThreshold ? 'acima da paralela' : minKneeAngle > SQUAT_CONFIG.parallelAngle ? 'aproximadamente paralelo' : 'abaixo da paralela';
-  const control = Math.round(clamp(100 - Math.abs(780 - durationMs) / 10, 0, 100));
+  const depthLabel: DepthLabel = 'não avaliável';
   return {
     id,
-    minKneeAngle: Math.round(minKneeAngle),
-    depthPercent,
+    minKneeAngle: Number.isFinite(minKneeAngle) ? Math.round(minKneeAngle) : 0,
+    thighAngleToHorizontal: null,
     depthLabel,
-    executionIndex: Math.round(depthPercent * 0.52 + control * 0.48),
-    durationMs,
-    note: depthPercent >= 62 ? 'Profundidade consistente' : 'Busque um pouco mais de profundidade',
-    scoreBreakdown: { depth: depthPercent, control, trunk: null, coordination: null },
+    executionIndex: null,
+    durationMs: Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null,
+    trackingQuality: trackingQualityForFrames(frames, 0),
+    note: 'Análise não pontuada: faltam frames válidos para avaliar a repetição.',
+    scoreBreakdown: { depth: null, control: null, trunk: null, coordination: null },
     checklist: [],
     phaseAnalysis: [],
     issues: [],
@@ -412,9 +629,12 @@ export class SquatRepTracker {
   private previousLandmarks: Point[] | null = null;
   private motionState: MotionState = 'SETUP';
   private currentRepFrames: SquatFrameMetrics[] = [];
+  private descentCandidateFrames: SquatFrameMetrics[] = [];
+  private standingCandidateFrames = 0;
   private baselineTrunkAngle: number | null = null;
   private minKneeAngle = 180;
   private repetitions: RepMetric[] = [];
+  private lastTimestamp: number | null = null;
 
   reset() {
     this.repetitions = [];
@@ -425,8 +645,15 @@ export class SquatRepTracker {
     this.previousLandmarks = null;
     this.motionState = 'SETUP';
     this.currentRepFrames = [];
+    this.descentCandidateFrames = [];
+    this.standingCandidateFrames = 0;
     this.baselineTrunkAngle = null;
     this.minKneeAngle = 180;
+    this.lastTimestamp = null;
+  }
+
+  handleTrackingLoss() {
+    this.resetMotion();
   }
 
   getRepetitions() {
@@ -444,11 +671,14 @@ export class SquatRepTracker {
         ? 'incomplete'
         : trackingStatus;
 
-    if (trackingStatus !== 'tracking' || !visiblePose) {
-      this.resetMotion();
+    const timestampIsMonotonic =
+      Number.isFinite(timestamp) &&
+      (this.lastTimestamp === null || timestamp > this.lastTimestamp);
+    if (trackingStatus !== 'tracking' || displayStatus !== 'tracking' || !visiblePose || !timestampIsMonotonic) {
+      this.handleTrackingLoss();
       return {
-        trackingStatus,
-        displayStatus,
+        trackingStatus: timestampIsMonotonic ? trackingStatus : 'incomplete',
+        displayStatus: timestampIsMonotonic ? displayStatus : 'incomplete',
         pose: visiblePose,
         frame: null,
         motionState: this.motionState,
@@ -458,11 +688,12 @@ export class SquatRepTracker {
       };
     }
 
+    this.lastTimestamp = timestamp;
     const pose = smoothLandmarks(this.previousLandmarks, visiblePose);
     this.previousLandmarks = pose;
     const frame = getSquatMetrics(pose);
     if (!frame) {
-      this.resetMotion();
+      this.handleTrackingLoss();
       return {
         trackingStatus,
         displayStatus,
@@ -490,53 +721,83 @@ export class SquatRepTracker {
 
     const repsBeforeFrame = this.repetitions.length;
     const motion = this.motionState;
-    if (motion === 'SETUP' && stateAngle > 153) {
-      this.motionState = 'EM_PÉ';
-    } else if (motion === 'EM_PÉ' && stateAngle < 150) {
-      frame.phase = 'DESCENDO';
-      this.currentRepFrames = [frame];
-      this.motionState = 'DESCENDO';
-      this.minKneeAngle = frame.kneeAngle;
+    if (motion === 'SETUP') {
+      if (stateAngle >= SQUAT_CONFIG.standingAngle) {
+        this.standingCandidateFrames += 1;
+        if (this.standingCandidateFrames >= SQUAT_CONFIG.standingStableFrames) {
+          this.motionState = 'EM_PÉ';
+          this.standingCandidateFrames = 0;
+        }
+      } else {
+        this.standingCandidateFrames = 0;
+      }
+    } else if (motion === 'EM_PÉ') {
+      if (stateAngle <= SQUAT_CONFIG.descentAngle) {
+        frame.phase = 'DESCENDO';
+        this.descentCandidateFrames.push(frame);
+        if (this.descentCandidateFrames.length >= 2) {
+          this.currentRepFrames = this.descentCandidateFrames;
+          this.descentCandidateFrames = [];
+          this.minKneeAngle = Math.min(...this.currentRepFrames.map((item) => item.kneeAngle));
+          this.motionState = 'DESCENDO';
+        }
+      } else {
+        this.descentCandidateFrames = [];
+      }
     } else if (motion === 'DESCENDO') {
       frame.phase = 'DESCENDO';
       this.currentRepFrames.push(frame);
       this.minKneeAngle = Math.min(this.minKneeAngle, frame.kneeAngle);
       if (stateAngle <= SQUAT_CONFIG.depthThreshold) {
         this.motionState = 'EMBAIXO';
+        this.standingCandidateFrames = 0;
+      } else if (stateAngle >= SQUAT_CONFIG.standingAngle) {
+        this.standingCandidateFrames += 1;
+        if (this.standingCandidateFrames >= SQUAT_CONFIG.abortDescentStableFrames) {
+          this.currentRepFrames = [];
+          this.minKneeAngle = 180;
+          this.motionState = 'EM_PÉ';
+          this.standingCandidateFrames = 0;
+        }
+      } else {
+        this.standingCandidateFrames = 0;
       }
     } else if (motion === 'EMBAIXO') {
       frame.phase = 'EMBAIXO';
       this.currentRepFrames.push(frame);
       this.minKneeAngle = Math.min(this.minKneeAngle, frame.kneeAngle);
-      if (stateAngle > 120) {
+      if (stateAngle >= SQUAT_CONFIG.bottomExitAngle) {
         this.motionState = 'SUBINDO';
       }
     } else if (motion === 'SUBINDO') {
-      frame.phase = 'SUBINDO';
+      const hasReturnedToStanding = stateAngle >= SQUAT_CONFIG.standingAngle;
+      frame.phase = hasReturnedToStanding ? 'FINALIZAÇÃO' : 'SUBINDO';
       this.currentRepFrames.push(frame);
-      if (stateAngle > 153) {
-        frame.phase = 'FINALIZAÇÃO';
-        this.currentRepFrames.push(frame);
-        this.repetitions = [
-          ...this.repetitions,
-          makeRepMetric(
-            this.repetitions.length + 1,
-            this.minKneeAngle,
-            this.currentRepFrames[this.currentRepFrames.length - 1].timestamp -
-              this.currentRepFrames[0].timestamp,
-            this.currentRepFrames,
-            this.baselineTrunkAngle,
-          ),
-        ];
-        this.currentRepFrames = [];
-        this.motionState = 'EM_PÉ';
-        this.minKneeAngle = 180;
+      if (hasReturnedToStanding) {
+        this.standingCandidateFrames += 1;
+        if (this.standingCandidateFrames >= SQUAT_CONFIG.completeRepStableFrames) {
+          const elapsed = validDuration(this.currentRepFrames);
+          this.repetitions = [
+            ...this.repetitions,
+            makeRepMetric(
+              this.repetitions.length + 1,
+              this.minKneeAngle,
+              elapsed ?? 0,
+              this.currentRepFrames,
+              this.baselineTrunkAngle,
+            ),
+          ];
+          this.currentRepFrames = [];
+          this.minKneeAngle = 180;
+          this.motionState = 'EM_PÉ';
+          this.standingCandidateFrames = 0;
+        }
+      } else {
+        this.standingCandidateFrames = 0;
+        if (stateAngle <= SQUAT_CONFIG.depthThreshold) {
+          this.motionState = 'EMBAIXO';
+        }
       }
-    } else if (motion === 'EM_PÉ' && stateAngle < 150) {
-      frame.phase = 'DESCENDO';
-      this.currentRepFrames = [frame];
-      this.motionState = 'DESCENDO';
-      this.minKneeAngle = frame.kneeAngle;
     }
 
     const currentReps = this.getRepetitions();
@@ -571,12 +832,11 @@ export function summarizeRepetitions(repetitions: RepMetric[]) {
     rep.positives.forEach((positive) => positives.set(positive, (positives.get(positive) ?? 0) + 1));
   });
   const priorityMessages: Record<string, string> = {
-    'Amplitude abaixo da meta': 'Mantenha a amplitude configurada de forma consistente e controlada.',
-    'Possível perda de sincronia na subida': 'Suba mantendo quadril e tronco mais coordenados.',
-    'Perda de contato do calcanhar': 'Mantenha o apoio do pé estável durante a execução.',
-    'Alteração significativa da inclinação do tronco': 'Controle melhor a inclinação do tronco durante a descida.',
-    'Movimento exagerado do tronco na finalização': 'Finalize sem projetar excessivamente o tronco para trás.',
-    'Possível alteração da posição pélvica no fundo do movimento': 'Reduza a amplitude se não conseguir manter controle no fundo.',
+    'Flexão estimada do joelho abaixo da faixa configurada': 'Confira visualmente a faixa angular indicada; não é uma medida de profundidade física.',
+    'Início da subida pareceu dessincronizado em 2D': 'Revise o vídeo para conferir a trajetória de ombro e quadril.',
+    'Inclinação visual do pé variou acima do limite estimado': 'Confira o posicionamento do pé diretamente; a câmera não confirma contato com o solo.',
+    'Mudança observada na inclinação 2D do tronco': 'Revise a orientação 2D de ombro e quadril; ela não mede a coluna.',
+    'Inclinação do tronco no final diferiu do início': 'Revise a posição no vídeo; isto não mede movimento pélvico ou coluna.',
   };
   const priorities = [...issues.entries()]
     .sort((a, b) => b[1] - a[1])

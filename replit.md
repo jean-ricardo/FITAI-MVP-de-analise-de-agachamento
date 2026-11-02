@@ -1,6 +1,6 @@
 # FITAI
 
-Aplicativo web mobile-first que analisa agachamentos localmente pela câmera do dispositivo, conta ciclos completos e mostra feedback experimental de execução.
+[Aplicativo web mobile-first que analisa agachamentos localmente pela câmera do dispositivo, conta ciclos completos e mostra feedback experimental de execução.
 
 ## Run & Operate
 
@@ -57,3 +57,4 @@ Aplicativo web mobile-first que analisa agachamentos localmente pela câmera do 
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+](Report.tsx)
